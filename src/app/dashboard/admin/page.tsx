@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useMemo } from 'react';
@@ -7,7 +8,7 @@ import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card'; // Added CardFooter
 import { Search, FilterX, ShieldCheck, BookOpen } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
@@ -159,4 +160,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-

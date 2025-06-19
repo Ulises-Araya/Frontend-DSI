@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'; // Added import
 
 export default function UserDashboardPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);

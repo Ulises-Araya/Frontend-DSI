@@ -31,14 +31,17 @@ const RegisterSchema = z.object({
 });
 
 const CreateShiftSchema = z.object({
-  date: z.string().min(1, "Fecha es requerida"),
+  date: z.string().min(1, "Fecha es requerida"), // Assuming YYYY-MM-DD from FormData
   startTime: z.string().min(1, "Hora de inicio es requerida"),
   endTime: z.string().min(1, "Hora de fin es requerida"),
   theme: z.string().min(1, "Temática es requerida"),
-  participantCount: z.coerce.number().min(1, "Cantidad de integrantes debe ser al menos 1"),
   notes: z.string().optional(),
   area: z.string().min(1, "Área es requerida"),
-  invitedUserDnis: z.string().optional(), 
+  invitedUserDnis: z.string().optional().refine(val => { // Comma-separated DNI string
+    if (!val || val.trim() === "") return true;
+    const dnis = val.split(',').map(d => d.trim());
+    return dnis.every(dni => /^\d{7,8}$/.test(dni));
+  }, "Uno o más DNIs invitados no son válidos (7-8 dígitos)."),
 });
 
 interface MockSession {
@@ -80,8 +83,6 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
   } else {
     redirect('/dashboard/user');
   }
-  // Redirect will throw an error, so this part might not be reached in happy path
-  // return { type: 'success', message: 'Login successful' }; 
 }
 
 export async function registerUser(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
@@ -123,9 +124,22 @@ export async function createShift(prevState: ActionResponse | null, formData: Fo
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
   const data = validatedFields.data;
-  const invitedDnis = data.invitedUserDnis?.split(',').map(d => d.trim()).filter(d => d) || [];
   
-  const newShift = addShiftDB({ ...data, creatorId: user.id, invitedUserDnis: invitedDnis }, user);
+  const invitedDnisArray = data.invitedUserDnis?.split(',').map(d => d.trim()).filter(d => d && d !== user.dni) || [];
+  const uniqueInvitedDnisArray = Array.from(new Set(invitedDnisArray)); // Ensure unique DNIs
+
+  if (uniqueInvitedDnisArray.some(dni => !findUserByDni(dni))) {
+    return { type: 'error', message: 'Uno o más DNIs invitados no corresponden a usuarios registrados.' };
+  }
+
+  const participantCount = 1 + uniqueInvitedDnisArray.length; // Creator + unique invited users
+  
+  const newShift = addShiftDB({ 
+    ...data, 
+    creatorId: user.id, 
+    invitedUserDnis: uniqueInvitedDnisArray,
+    participantCount: participantCount 
+  }, user);
   return { type: 'success', message: 'Turno creado exitosamente.', shift: newShift };
 }
 

@@ -44,6 +44,23 @@ export function LoginForm() {
     // Successful login redirects, so no toast needed here
   }, [state, toast]);
 
+  const onValidSubmit = (
+    _data: LoginFormValues, 
+    event?: React.BaseSyntheticEvent<object, any, any>
+  ) => {
+    if (event && event.target instanceof HTMLFormElement) {
+      const formData = new FormData(event.target);
+      formAction(formData);
+    } else {
+      // Fallback if event.target is not available, though it should be for form submissions.
+      // Construct FormData from RHF's validated data.
+      const formData = new FormData();
+      formData.append('dni', _data.dni);
+      formData.append('password', _data.password);
+      formAction(formData);
+    }
+  };
+
   return (
     <Card className="w-full max-w-md shadow-2xl bg-card/90 backdrop-blur-sm border-primary/30">
       <CardHeader className="text-center">
@@ -51,7 +68,7 @@ export function LoginForm() {
         <CardTitle className="font-headline text-3xl">Iniciar Sesión</CardTitle>
         <CardDescription className="text-muted-foreground">Accede a tu cuenta para gestionar tus turnos.</CardDescription>
       </CardHeader>
-      <form action={formAction} onSubmit={form.handleSubmit(() => formAction(new FormData(form.control._formValues)))}>
+      <form onSubmit={form.handleSubmit(onValidSubmit)}>
         <CardContent className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="dni" className="text-foreground/80">DNI</Label>

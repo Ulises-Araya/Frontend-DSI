@@ -58,6 +58,24 @@ export function RegisterForm() {
     }
   }, [state, toast, form]);
 
+  const onValidSubmit = (
+    _data: RegisterFormValues,
+    event?: React.BaseSyntheticEvent<object, any, any>
+  ) => {
+    if (event && event.target instanceof HTMLFormElement) {
+      const formData = new FormData(event.target);
+      formAction(formData);
+    } else {
+      // Fallback: construct FormData from RHF's validated data.
+      const formData = new FormData();
+      formData.append('fullName', _data.fullName);
+      formData.append('email', _data.email);
+      formData.append('dni', _data.dni);
+      formData.append('password', _data.password);
+      formData.append('confirmPassword', _data.confirmPassword);
+      formAction(formData);
+    }
+  };
 
   return (
     <Card className="w-full max-w-lg shadow-2xl bg-card/90 backdrop-blur-sm border-primary/30">
@@ -66,7 +84,7 @@ export function RegisterForm() {
         <CardTitle className="font-headline text-3xl">Crear Cuenta</CardTitle>
         <CardDescription className="text-muted-foreground">Únete para comenzar a programar tus turnos.</CardDescription>
       </CardHeader>
-      <form action={formAction} onSubmit={form.handleSubmit(() => formAction(new FormData(form.control._formValues)))}>
+      <form onSubmit={form.handleSubmit(onValidSubmit)}>
         <CardContent className="space-y-4">
           <div>
             <Label htmlFor="fullName">Nombre Completo</Label>

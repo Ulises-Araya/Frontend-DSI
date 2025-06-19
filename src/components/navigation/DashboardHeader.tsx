@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from 'next/link';
@@ -6,7 +7,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { logoutUser, getCurrentUserMock } from '@/lib/actions';
 import { useEffect, useState } from 'react';
 import type { User } from '@/lib/types';
-import { LogOut, Settings, UserCircle, LayoutDashboard } from 'lucide-react';
+import { LogOut, Settings, UserCircle, LayoutDashboard, Handshake } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
   DropdownMenu,
@@ -26,7 +27,7 @@ export function DashboardHeader() {
     async function fetchUser() {
       const currentUser = await getCurrentUserMock();
       setUser(currentUser);
-      if (!currentUser) { // Basic protection, proper middleware is better
+      if (!currentUser) { 
         router.push('/login');
       }
     }
@@ -79,8 +80,14 @@ export function DashboardHeader() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => router.push(user.role === 'admin' ? '/dashboard/admin' : '/dashboard/user')}>
                   <LayoutDashboard className="mr-2 h-4 w-4" />
-                  <span>Dashboard</span>
+                  <span>{user.role === 'admin' ? 'Panel Admin' : 'Mis Turnos Creados'}</span>
                 </DropdownMenuItem>
+                {user.role === 'user' && (
+                  <DropdownMenuItem onClick={() => router.push('/dashboard/user/invited-shifts')}>
+                    <Handshake className="mr-2 h-4 w-4" />
+                    <span>Turnos Invitados</span>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem disabled>
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Configuración</span>

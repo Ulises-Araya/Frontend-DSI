@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useFormState } from "react-dom";
+import { useActionState, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -9,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { createShift } from "@/lib/actions";
-import { useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Calendar as CalendarIcon, PlusCircle } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -48,7 +48,7 @@ interface CreateShiftFormProps {
 }
 
 export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProps) {
-  const [state, formAction] = useFormState(createShift, null);
+  const [state, formAction] = useActionState(createShift, null);
   const { toast } = useToast();
 
   const form = useForm<CreateShiftFormValues>({

@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useFormState } from "react-dom";
+import { useActionState, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -10,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { loginUser } from "@/lib/actions";
-import { useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { BookOpenText, KeyRound } from "lucide-react";
 
@@ -22,7 +22,7 @@ const LoginSchema = z.object({
 type LoginFormValues = z.infer<typeof LoginSchema>;
 
 export function LoginForm() {
-  const [state, formAction] = useFormState(loginUser, null);
+  const [state, formAction] = useActionState(loginUser, null);
   const { toast } = useToast();
 
   const form = useForm<LoginFormValues>({

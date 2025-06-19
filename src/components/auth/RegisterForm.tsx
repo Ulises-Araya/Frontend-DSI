@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useFormState } from "react-dom";
+import { useActionState, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -10,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { registerUser } from "@/lib/actions";
-import { useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Feather, UserPlus } from "lucide-react";
 
@@ -28,7 +28,7 @@ const RegisterSchema = z.object({
 type RegisterFormValues = z.infer<typeof RegisterSchema>;
 
 export function RegisterForm() {
-  const [state, formAction] = useFormState(registerUser, null);
+  const [state, formAction] = useActionState(registerUser, null);
   const { toast } = useToast();
 
   const form = useForm<RegisterFormValues>({

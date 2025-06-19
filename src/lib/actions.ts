@@ -1,3 +1,4 @@
+
 "use server";
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
@@ -38,55 +39,46 @@ let currentUserId: string | null = null; // THIS IS NOT SECURE FOR PRODUCTION
 let currentUserRole: 'user' | 'admin' | null = null; // THIS IS NOT SECURE
 
 export async function loginUser(prevState: any, formData: FormData) {
-  try {
-    const validatedFields = LoginSchema.safeParse(Object.fromEntries(formData.entries()));
-    if (!validatedFields.success) {
-      return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
-    }
+  const validatedFields = LoginSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!validatedFields.success) {
+    return { type: 'error' as const, message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
+  }
 
-    const { dni, password } = validatedFields.data;
-    const user = findUserByDni(dni);
+  const { dni, password } = validatedFields.data;
+  const user = findUserByDni(dni);
 
-    if (!user || !verifyPassword(password, user.password)) {
-      return { type: 'error', message: 'DNI o contraseña incorrectos.' };
-    }
-    
-    // Simulate setting session
-    currentUserId = user.id;
-    currentUserRole = user.role;
+  if (!user || !verifyPassword(password, user.password)) {
+    return { type: 'error' as const, message: 'DNI o contraseña incorrectos.' };
+  }
+  
+  // Simulate setting session
+  currentUserId = user.id;
+  currentUserRole = user.role;
 
-    if (user.role === 'admin') {
-      redirect('/dashboard/admin');
-    } else {
-      redirect('/dashboard/user');
-    }
-    // return { type: 'success', message: 'Login exitoso.', role: user.role }; // Redirect handled above
-  } catch (error) {
-    return { type: 'error', message: 'Error en el servidor.' };
+  if (user.role === 'admin') {
+    redirect('/dashboard/admin');
+  } else {
+    redirect('/dashboard/user');
   }
 }
 
 export async function registerUser(prevState: any, formData: FormData) {
-  try {
-    const validatedFields = RegisterSchema.safeParse(Object.fromEntries(formData.entries()));
-    if (!validatedFields.success) {
-      return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
-    }
-    const { dni, email, fullName, password } = validatedFields.data;
-
-    if (findUserByDni(dni)) {
-      return { type: 'error', message: 'DNI ya registrado.' };
-    }
-    if (findUserByEmail(email)) {
-      return { type: 'error', message: 'Email ya registrado.' };
-    }
-
-    addUser({ dni, email, fullName, password });
-    // No automatic login after registration in this mock
-    return { type: 'success', message: 'Registro exitoso. Por favor, inicia sesión.' };
-  } catch (error) {
-    return { type: 'error', message: 'Error en el servidor.' };
+  const validatedFields = RegisterSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!validatedFields.success) {
+    return { type: 'error' as const, message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
+  const { dni, email, fullName, password } = validatedFields.data;
+
+  if (findUserByDni(dni)) {
+    return { type: 'error' as const, message: 'DNI ya registrado.' };
+  }
+  if (findUserByEmail(email)) {
+    return { type: 'error' as const, message: 'Email ya registrado.' };
+  }
+
+  addUser({ dni, email, fullName, password });
+  // No automatic login after registration in this mock
+  return { type: 'success' as const, message: 'Registro exitoso. Por favor, inicia sesión.' };
 }
 
 export async function getCurrentUserMock(): Promise<User | null> {
@@ -103,21 +95,17 @@ export async function logoutUser() {
 
 export async function createShift(prevState: any, formData: FormData) {
   const user = await getCurrentUserMock();
-  if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
+  if (!user) return { type: 'error' as const, message: 'Usuario no autenticado.' };
 
-  try {
-    const validatedFields = CreateShiftSchema.safeParse(Object.fromEntries(formData.entries()));
-    if (!validatedFields.success) {
-      return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
-    }
-    const data = validatedFields.data;
-    const invitedDnis = data.invitedUserDnis?.split(',').map(d => d.trim()).filter(d => d) || [];
-    
-    addShiftDB({ ...data, creatorId: user.id, invitedUserDnis: invitedDnis }, user);
-    return { type: 'success', message: 'Turno creado exitosamente.' };
-  } catch (error) {
-    return { type: 'error', message: 'Error al crear el turno.' };
+  const validatedFields = CreateShiftSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!validatedFields.success) {
+    return { type: 'error' as const, message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
+  const data = validatedFields.data;
+  const invitedDnis = data.invitedUserDnis?.split(',').map(d => d.trim()).filter(d => d) || [];
+  
+  addShiftDB({ ...data, creatorId: user.id, invitedUserDnis: invitedDnis }, user);
+  return { type: 'success' as const, message: 'Turno creado exitosamente.' };
 }
 
 export async function getUserShifts(): Promise<Shift[]> {

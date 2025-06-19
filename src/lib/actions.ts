@@ -3,8 +3,16 @@
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { findUserByDni, verifyPassword, addUser, findUserByEmail, usersDB } from './auth-helpers';
-import { addShift as addShiftDB, getShiftsByUserId as getShiftsByUserIdDB, getAllShifts as getAllShiftsDB, updateShiftStatus as updateShiftStatusDB, inviteUserToShiftDB } from './shift-helpers';
-import type { Shift, ShiftStatus, User } from './types';
+import { 
+  addShift as addShiftDB, 
+  getShiftsByUserId as getShiftsByUserIdDB, 
+  getAllShifts as getAllShiftsDB, 
+  updateShiftStatus as updateShiftStatusDB, 
+  inviteUserToShiftDB,
+  acceptShiftInvitationDB,
+  rejectShiftInvitationDB
+} from './shift-helpers';
+import type { Shift, ShiftStatus, User, ActionResponse } from './types';
 
 const LoginSchema = z.object({
   dni: z.string().min(1, "DNI es requerido"),
@@ -30,13 +38,13 @@ const CreateShiftSchema = z.object({
   participantCount: z.coerce.number().min(1, "Cantidad de integrantes debe ser al menos 1"),
   notes: z.string().optional(),
   area: z.string().min(1, "Área es requerida"),
-  invitedUserDnis: z.string().optional(), // Comma-separated DNI strings
+  invitedUserDnis: z.string().optional(), 
 });
 
-// Simulate session management (HMR-resistant)
 interface MockSession {
   currentUserId: string | null;
   currentUserRole: 'user' | 'admin' | null;
+  currentUserDni: string | null;
 }
 
 declare global {
@@ -45,126 +53,137 @@ declare global {
 }
 
 if (globalThis.mockSession === undefined) {
-  globalThis.mockSession = { currentUserId: null, currentUserRole: null };
+  globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null };
 }
 
-let currentUserId: string | null = globalThis.mockSession.currentUserId;
-let currentUserRole: 'user' | 'admin' | null = globalThis.mockSession.currentUserRole;
-
-
-export async function loginUser(prevState: any, formData: FormData) {
+export async function loginUser(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const validatedFields = LoginSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!validatedFields.success) {
-    return { type: 'error' as const, message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
+    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
 
   const { dni, password } = validatedFields.data;
   const user = findUserByDni(dni);
 
   if (!user || !verifyPassword(password, user.password)) {
-    return { type: 'error' as const, message: 'DNI o contraseña incorrectos.' };
+    return { type: 'error', message: 'DNI o contraseña incorrectos.' };
   }
   
-  // Simulate setting session
-  globalThis.mockSession.currentUserId = user.id;
-  globalThis.mockSession.currentUserRole = user.role;
-  currentUserId = user.id; // Sync local module var
-  currentUserRole = user.role; // Sync local module var
+  globalThis.mockSession = {
+      currentUserId: user.id,
+      currentUserRole: user.role,
+      currentUserDni: user.dni
+  };
 
   if (user.role === 'admin') {
     redirect('/dashboard/admin');
   } else {
     redirect('/dashboard/user');
   }
+  // Redirect will throw an error, so this part might not be reached in happy path
+  // return { type: 'success', message: 'Login successful' }; 
 }
 
-export async function registerUser(prevState: any, formData: FormData) {
+export async function registerUser(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const validatedFields = RegisterSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!validatedFields.success) {
-    return { type: 'error' as const, message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
+    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
   const { dni, email, fullName, password } = validatedFields.data;
 
   if (findUserByDni(dni)) {
-    return { type: 'error' as const, message: 'DNI ya registrado.' };
+    return { type: 'error', message: 'DNI ya registrado.' };
   }
   if (findUserByEmail(email)) {
-    return { type: 'error' as const, message: 'Email ya registrado.' };
+    return { type: 'error', message: 'Email ya registrado.' };
   }
 
   addUser({ dni, email, fullName, password });
-  return { type: 'success' as const, message: 'Registro exitoso. Por favor, inicia sesión.' };
+  return { type: 'success', message: 'Registro exitoso. Por favor, inicia sesión.' };
 }
 
 export async function getCurrentUserMock(): Promise<User | null> {
-  // Ensure local vars are up-to-date with globalThis version, in case another request modified it via HMR workaround
-  currentUserId = globalThis.mockSession?.currentUserId || null;
-  currentUserRole = globalThis.mockSession?.currentUserRole || null;
-  
-  if (!currentUserId) return null;
-  return usersDB.find(u => u.id === currentUserId) || null;
+  const session = globalThis.mockSession;
+  if (!session?.currentUserId) return null;
+  return usersDB.find(u => u.id === session.currentUserId) || null;
 }
 
 export async function logoutUser() {
-  globalThis.mockSession.currentUserId = null;
-  globalThis.mockSession.currentUserRole = null;
-  currentUserId = null; // Sync local module var
-  currentUserRole = null; // Sync local module var
+  globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null };
   redirect('/login');
 }
 
 
-export async function createShift(prevState: any, formData: FormData) {
+export async function createShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const user = await getCurrentUserMock();
-  if (!user) return { type: 'error' as const, message: 'Usuario no autenticado.' };
+  if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
 
   const validatedFields = CreateShiftSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!validatedFields.success) {
-    return { type: 'error' as const, message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
+    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
   const data = validatedFields.data;
   const invitedDnis = data.invitedUserDnis?.split(',').map(d => d.trim()).filter(d => d) || [];
   
-  addShiftDB({ ...data, creatorId: user.id, invitedUserDnis: invitedDnis }, user);
-  return { type: 'success' as const, message: 'Turno creado exitosamente.' };
+  const newShift = addShiftDB({ ...data, creatorId: user.id, invitedUserDnis: invitedDnis }, user);
+  return { type: 'success', message: 'Turno creado exitosamente.', shift: newShift };
 }
 
 export async function getUserShifts(): Promise<Shift[]> {
-  if (!currentUserId) { // Check against potentially updated local var
-    currentUserId = globalThis.mockSession?.currentUserId || null; // Re-check global
-  }
-  if (!currentUserId) return [];
-  return getShiftsByUserIdDB(currentUserId);
+  const user = await getCurrentUserMock();
+  if (!user?.id) return [];
+  return getShiftsByUserIdDB(user.id);
 }
 
 export async function getAllShiftsAdmin(): Promise<Shift[]> {
-  if (!currentUserRole) { // Check against potentially updated local var
-     currentUserRole = globalThis.mockSession?.currentUserRole || null; // Re-check global
-  }
-  if (currentUserRole !== 'admin') return []; // Basic auth check
+  const user = await getCurrentUserMock();
+  if (user?.role !== 'admin') return [];
   return getAllShiftsDB();
 }
 
-export async function updateShiftStatus(shiftId: string, status: ShiftStatus): Promise<{success: boolean, message?: string, shift?: Shift}> {
-  if (!currentUserRole) {
-     currentUserRole = globalThis.mockSession?.currentUserRole || null;
-  }
-  if (currentUserRole !== 'admin') return { success: false, message: 'No autorizado' };
+export async function updateShiftStatus(shiftId: string, status: ShiftStatus): Promise<ActionResponse> {
+  const user = await getCurrentUserMock();
+  if (user?.role !== 'admin') return { type: 'error', message: 'No autorizado' };
   const updatedShift = updateShiftStatusDB(shiftId, status);
   if (updatedShift) {
-    return { success: true, shift: updatedShift };
+    return { type: 'success', message: 'Estado actualizado', shift: updatedShift };
   }
-  return { success: false, message: 'Error al actualizar el turno' };
+  return { type: 'error', message: 'Error al actualizar el turno' };
 }
 
-export async function inviteUserToShift(shiftId: string, userDniToInvite: string): Promise<{success: boolean, message?: string, shift?: Shift}> {
+export async function inviteUserToShift(shiftId: string, userDniToInvite: string): Promise<ActionResponse> {
    const user = await getCurrentUserMock();
-   if (!user) return { success: false, message: 'Usuario no autenticado.' };
+   if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
 
    const result = inviteUserToShiftDB(shiftId, userDniToInvite);
    if ('error' in result) {
-    return { success: false, message: result.error };
+    return { type: 'error', message: result.error };
    }
-   return { success: true, shift: result };
+   return { type: 'success', message: 'Usuario invitado.', shift: result };
 }
 
+export async function respondToShiftInvitation(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const user = await getCurrentUserMock();
+  if (!user || !user.dni) return { type: 'error', message: 'Usuario no autenticado o DNI no encontrado.' };
+
+  const shiftId = formData.get('shiftId') as string;
+  const response = formData.get('response') as 'accept' | 'reject';
+
+  if (!shiftId || !response) {
+    return { type: 'error', message: 'Faltan datos para responder a la invitación.' };
+  }
+
+  let result;
+  if (response === 'accept') {
+    result = acceptShiftInvitationDB(shiftId, user.dni);
+  } else {
+    result = rejectShiftInvitationDB(shiftId, user.dni);
+  }
+
+  if ('error' in result) {
+    return { type: 'error', message: result.error };
+  }
+  
+  const message = response === 'accept' ? 'Invitación aceptada.' : 'Invitación rechazada.';
+  return { type: 'success', message, shift: result };
+}

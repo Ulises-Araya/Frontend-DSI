@@ -24,5 +24,12 @@ export interface Shift {
   creatorId: string;
   creatorDni?: string; 
   creatorFullName?: string;
-  invitedUserDnis: string[];
+  invitedUserDnis: string[]; // List of DNIs of invited users
+}
+
+export interface ActionResponse {
+  type: 'success' | 'error';
+  message: string;
+  errors?: Record<string, string[] | undefined>;
+  shift?: Shift;
 }

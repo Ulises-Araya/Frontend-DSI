@@ -32,7 +32,7 @@ export let shiftsDB: Shift[] = [
     creatorId: '2', // Regular User
     creatorDni: '12345678',
     creatorFullName: 'Regular User',
-    invitedUserDnis: [] // Initially no one, can be modified by inviteUserToShiftDB
+    invitedUserDnis: []
   },
   {
     id: 's3',
@@ -47,38 +47,37 @@ export let shiftsDB: Shift[] = [
     creatorId: '1', // Admin User
     creatorDni: 'admin',
     creatorFullName: 'Admin User',
-    invitedUserDnis: ['12345678'] // Regular User DNI
+    invitedUserDnis: ['12345678'] // Regular User DNI invited
   }
 ];
+
+// Helper to ensure creator details are populated
+const populateCreatorDetails = (shift: Shift): Shift => {
+  if (!shift.creatorFullName || !shift.creatorDni) {
+    const creator = usersDB.find(u => u.id === shift.creatorId);
+    return {
+      ...shift,
+      creatorDni: creator?.dni || shift.creatorDni || 'N/A',
+      creatorFullName: creator?.fullName || shift.creatorFullName || 'Desconocido',
+    };
+  }
+  return shift;
+};
+
 
 export function getShiftsByUserId(userId: string): Shift[] {
   const user = usersDB.find(u => u.id === userId);
   if (!user) return [];
   
-  // Fetch all shifts and populate creator details
-  const allShiftsWithDetails = shiftsDB.map(shift => {
-    const creator = usersDB.find(u => u.id === shift.creatorId);
-    return {
-      ...shift,
-      creatorDni: creator?.dni || shift.creatorDni, // Keep existing if creator not found (e.g., for new shifts)
-      creatorFullName: creator?.fullName || shift.creatorFullName, // Keep existing
-    };
-  });
-
-  return allShiftsWithDetails.filter(shift => 
-    shift.creatorId === userId || shift.invitedUserDnis.includes(user.dni)
-  );
+  return shiftsDB
+    .map(populateCreatorDetails)
+    .filter(shift => 
+      shift.creatorId === userId || shift.invitedUserDnis.includes(user.dni)
+    );
 }
 
 export function getAllShifts(): Shift[] {
-  return shiftsDB.map(shift => {
-    const creator = usersDB.find(u => u.id === shift.creatorId);
-    return {
-      ...shift,
-      creatorDni: creator?.dni || shift.creatorDni,
-      creatorFullName: creator?.fullName || shift.creatorFullName,
-    };
-  });
+  return shiftsDB.map(populateCreatorDetails);
 }
 
 export function addShift(newShiftData: Omit<Shift, 'id' | 'status' | 'creatorFullName' | 'creatorDni'>, creator: User): Shift {
@@ -90,41 +89,61 @@ export function addShift(newShiftData: Omit<Shift, 'id' | 'status' | 'creatorFul
     creatorFullName: creator.fullName,
   };
   shiftsDB.push(shift);
-  return shift;
+  return populateCreatorDetails(shift);
 }
 
 export function updateShiftStatus(shiftId: string, status: ShiftStatus): Shift | undefined {
   const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
   if (shiftIndex > -1) {
     shiftsDB[shiftIndex].status = status;
-    // Ensure creator details are present if not already
-    const creator = usersDB.find(u => u.id === shiftsDB[shiftIndex].creatorId);
-    shiftsDB[shiftIndex].creatorDni = creator?.dni || shiftsDB[shiftIndex].creatorDni;
-    shiftsDB[shiftIndex].creatorFullName = creator?.fullName || shiftsDB[shiftIndex].creatorFullName;
-    return shiftsDB[shiftIndex];
+    return populateCreatorDetails(shiftsDB[shiftIndex]);
   }
   return undefined;
 }
 
-export function inviteUserToShiftDB(shiftId: string, userDni: string): Shift | { error: string } {
+export function inviteUserToShiftDB(shiftId: string, userDniToInvite: string): Shift | { error: string } {
   const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
   if (shiftIndex === -1) return { error: 'Shift not found' };
 
-  const userToInvite = usersDB.find(u => u.dni === userDni);
+  const userToInvite = usersDB.find(u => u.dni === userDniToInvite);
   if (!userToInvite) return { error: 'User to invite not found' };
   
-  if (shiftsDB[shiftIndex].invitedUserDnis.includes(userDni)) {
+  if (shiftsDB[shiftIndex].invitedUserDnis.includes(userDniToInvite)) {
     return { error: 'User already invited' };
   }
-  if (shiftsDB[shiftIndex].creatorDni === userDni) {
+  if (shiftsDB[shiftIndex].creatorDni === userDniToInvite) {
     return { error: 'Cannot invite creator' };
   }
 
-  shiftsDB[shiftIndex].invitedUserDnis.push(userDni);
-  // Ensure creator details are present if not already
-  const creator = usersDB.find(u => u.id === shiftsDB[shiftIndex].creatorId);
-  shiftsDB[shiftIndex].creatorDni = creator?.dni || shiftsDB[shiftIndex].creatorDni;
-  shiftsDB[shiftIndex].creatorFullName = creator?.fullName || shiftsDB[shiftIndex].creatorFullName;
-  return shiftsDB[shiftIndex];
+  shiftsDB[shiftIndex].invitedUserDnis.push(userDniToInvite);
+  return populateCreatorDetails(shiftsDB[shiftIndex]);
 }
 
+export function acceptShiftInvitationDB(shiftId: string, acceptingUserDni: string): Shift | { error: string } {
+  const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
+  if (shiftIndex === -1) return { error: 'Shift not found' };
+  
+  const shift = shiftsDB[shiftIndex];
+  if (!shift.invitedUserDnis.includes(acceptingUserDni)) {
+    return { error: 'User was not invited to this shift or has already responded.' };
+  }
+  // For "accept", we don't change the data model much with the current setup.
+  // The user remains in invitedUserDnis. The UI will handle removing accept/reject buttons.
+  // If we had a per-user invitation status, we'd update it here.
+  // We could change the shift status to 'accepted' if this is the first acceptance,
+  // but that's a larger logic change. For now, an admin still needs to accept the shift itself.
+  return populateCreatorDetails(shift);
+}
+
+export function rejectShiftInvitationDB(shiftId: string, rejectingUserDni: string): Shift | { error: string } {
+  const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
+  if (shiftIndex === -1) return { error: 'Shift not found' };
+
+  const shift = shiftsDB[shiftIndex];
+  if (!shift.invitedUserDnis.includes(rejectingUserDni)) {
+    return { error: 'User was not invited to this shift or has already responded.' };
+  }
+
+  shift.invitedUserDnis = shift.invitedUserDnis.filter(dni => dni !== rejectingUserDni);
+  return populateCreatorDetails(shift);
+}

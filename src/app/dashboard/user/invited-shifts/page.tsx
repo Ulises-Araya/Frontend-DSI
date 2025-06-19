@@ -8,23 +8,27 @@ import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import Image from 'next/image';
-import { Handshake, CalendarOff } from 'lucide-react';
+import { Handshake, ArrowLeft, BellRing } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
 
 export default function InvitedShiftsPage() {
   const [user, setUser] = useState<User | null>(null);
-  const [allUserShifts, setAllUserShifts] = useState<Shift[]>([]);
+  const [pendingInvitations, setPendingInvitations] = useState<Shift[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   async function loadData() {
     setIsLoading(true);
     const fetchedUser = await getCurrentUserMock();
     setUser(fetchedUser);
-    if (fetchedUser) {
+    if (fetchedUser && fetchedUser.dni) {
       const fetchedShifts = await getUserShifts();
-      setAllUserShifts(fetchedShifts);
+      const invites = fetchedShifts.filter(shift => 
+        shift.invitedUserDnis.includes(fetchedUser.dni) && 
+        shift.creatorId !== fetchedUser.id &&
+        shift.status === 'pending' // Only show pending invitations for action
+      ).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      setPendingInvitations(invites);
     }
     setIsLoading(false);
   }
@@ -33,24 +37,17 @@ export default function InvitedShiftsPage() {
     loadData();
   }, []);
 
-  const invitedShifts = allUserShifts.filter(shift => 
-    user && shift.invitedUserDnis.includes(user.dni) && shift.creatorId !== user.id
-  );
-
-  const activeInvitedShifts = invitedShifts.filter(s => s.status === 'pending' || s.status === 'accepted');
-  const pastOrCancelledInvitedShifts = invitedShifts.filter(s => s.status === 'cancelled');
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl md:text-4xl font-headline text-primary flex items-center">
-          <Handshake className="w-10 h-10 mr-3" />
-          Turnos a los que fui Invitado
+          <BellRing className="w-10 h-10 mr-3" />
+          Invitaciones Pendientes
         </h1>
         <Button variant="outline" asChild>
           <Link href="/dashboard/user">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Volver a Mis Turnos Creados
+            Volver a Mis Turnos
           </Link>
         </Button>
       </div>
@@ -65,54 +62,32 @@ export default function InvitedShiftsPage() {
                 <Skeleton className="h-4 w-5/6" />
                 <Skeleton className="h-4 w-1/2" />
               </CardContent>
-              <CardFooter><Skeleton className="h-10 w-1/3" /></CardFooter>
+              <CardFooter className="h-10" />
             </Card>
           ))}
         </div>
       ) : (
         <>
-          <section>
-            <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
-              <Handshake className="w-6 h-6 mr-3 text-accent" />
-              Invitaciones Activas
-            </h2>
-            {activeInvitedShifts.length > 0 ? (
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {activeInvitedShifts.map(shift => (
-                  <ShiftCard 
-                    key={shift.id} 
-                    shift={shift} 
-                    currentUserRole="user" 
-                    currentUserId={user?.id} 
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
-                <Image src="https://placehold.co/128x128.png" alt="No invitations" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="empty envelope" />
-                <p className="text-muted-foreground">No tienes invitaciones a turnos activos.</p>
-                <p className="text-sm text-muted-foreground/80">Cuando te inviten a un turno, aparecerá aquí.</p>
-              </div>
-            )}
-          </section>
-
-          {pastOrCancelledInvitedShifts.length > 0 && (
-            <section>
-              <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
-                <CalendarOff className="w-6 h-6 mr-3 text-accent" />
-                Invitaciones Anteriores o Canceladas
-              </h2>
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {pastOrCancelledInvitedShifts.map(shift => (
-                  <ShiftCard 
-                    key={shift.id} 
-                    shift={shift} 
-                    currentUserRole="user"
-                    currentUserId={user?.id}
-                  />
-                ))}
-              </div>
-            </section>
+          {pendingInvitations.length > 0 ? (
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {pendingInvitations.map(shift => (
+                user && user.dni &&
+                <ShiftCard 
+                  key={shift.id} 
+                  shift={shift} 
+                  currentUserRole="user" 
+                  currentUserId={user.id} 
+                  currentUserDni={user.dni}
+                  onShiftUpdate={loadData}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
+              <Image src="https://placehold.co/128x128.png" alt="No pending invitations" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="empty envelope mail" />
+              <p className="text-muted-foreground">No tienes invitaciones pendientes.</p>
+              <p className="text-sm text-muted-foreground/80">Cuando te inviten a un turno y esté pendiente de tu respuesta, aparecerá aquí.</p>
+            </div>
           )}
         </>
       )}

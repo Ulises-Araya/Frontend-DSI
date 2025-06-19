@@ -33,10 +33,24 @@ const CreateShiftSchema = z.object({
   invitedUserDnis: z.string().optional(), // Comma-separated DNI strings
 });
 
+// Simulate session management (HMR-resistant)
+interface MockSession {
+  currentUserId: string | null;
+  currentUserRole: 'user' | 'admin' | null;
+}
 
-// Simulate session management (very basic)
-let currentUserId: string | null = null; // THIS IS NOT SECURE FOR PRODUCTION
-let currentUserRole: 'user' | 'admin' | null = null; // THIS IS NOT SECURE
+declare global {
+  // eslint-disable-next-line no-var
+  var mockSession: MockSession | undefined;
+}
+
+if (globalThis.mockSession === undefined) {
+  globalThis.mockSession = { currentUserId: null, currentUserRole: null };
+}
+
+let currentUserId: string | null = globalThis.mockSession.currentUserId;
+let currentUserRole: 'user' | 'admin' | null = globalThis.mockSession.currentUserRole;
+
 
 export async function loginUser(prevState: any, formData: FormData) {
   const validatedFields = LoginSchema.safeParse(Object.fromEntries(formData.entries()));
@@ -52,8 +66,10 @@ export async function loginUser(prevState: any, formData: FormData) {
   }
   
   // Simulate setting session
-  currentUserId = user.id;
-  currentUserRole = user.role;
+  globalThis.mockSession.currentUserId = user.id;
+  globalThis.mockSession.currentUserRole = user.role;
+  currentUserId = user.id; // Sync local module var
+  currentUserRole = user.role; // Sync local module var
 
   if (user.role === 'admin') {
     redirect('/dashboard/admin');
@@ -77,18 +93,23 @@ export async function registerUser(prevState: any, formData: FormData) {
   }
 
   addUser({ dni, email, fullName, password });
-  // No automatic login after registration in this mock
   return { type: 'success' as const, message: 'Registro exitoso. Por favor, inicia sesión.' };
 }
 
 export async function getCurrentUserMock(): Promise<User | null> {
+  // Ensure local vars are up-to-date with globalThis version, in case another request modified it via HMR workaround
+  currentUserId = globalThis.mockSession?.currentUserId || null;
+  currentUserRole = globalThis.mockSession?.currentUserRole || null;
+  
   if (!currentUserId) return null;
   return usersDB.find(u => u.id === currentUserId) || null;
 }
 
 export async function logoutUser() {
-  currentUserId = null;
-  currentUserRole = null;
+  globalThis.mockSession.currentUserId = null;
+  globalThis.mockSession.currentUserRole = null;
+  currentUserId = null; // Sync local module var
+  currentUserRole = null; // Sync local module var
   redirect('/login');
 }
 
@@ -109,16 +130,25 @@ export async function createShift(prevState: any, formData: FormData) {
 }
 
 export async function getUserShifts(): Promise<Shift[]> {
+  if (!currentUserId) { // Check against potentially updated local var
+    currentUserId = globalThis.mockSession?.currentUserId || null; // Re-check global
+  }
   if (!currentUserId) return [];
   return getShiftsByUserIdDB(currentUserId);
 }
 
 export async function getAllShiftsAdmin(): Promise<Shift[]> {
+  if (!currentUserRole) { // Check against potentially updated local var
+     currentUserRole = globalThis.mockSession?.currentUserRole || null; // Re-check global
+  }
   if (currentUserRole !== 'admin') return []; // Basic auth check
   return getAllShiftsDB();
 }
 
 export async function updateShiftStatus(shiftId: string, status: ShiftStatus): Promise<{success: boolean, message?: string, shift?: Shift}> {
+  if (!currentUserRole) {
+     currentUserRole = globalThis.mockSession?.currentUserRole || null;
+  }
   if (currentUserRole !== 'admin') return { success: false, message: 'No autorizado' };
   const updatedShift = updateShiftStatusDB(shiftId, status);
   if (updatedShift) {
@@ -137,3 +167,4 @@ export async function inviteUserToShift(shiftId: string, userDniToInvite: string
    }
    return { success: true, shift: result };
 }
+

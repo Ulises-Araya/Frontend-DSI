@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -48,7 +48,8 @@ interface CreateShiftFormProps {
 }
 
 export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProps) {
-  const [state, formAction] = useActionState(createShift, null);
+  const [state, formAction, isActionPending] = useActionState(createShift, null);
+  const [, startTransition] = useTransition();
   const { toast } = useToast();
 
   const form = useForm<CreateShiftFormValues>({
@@ -91,7 +92,9 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
     formData.append("area", values.area);
     if (values.invitedUserDnis) formData.append("invitedUserDnis", values.invitedUserDnis);
     
-    formAction(formData);
+    startTransition(() => {
+      formAction(formData);
+    });
   };
 
   return (
@@ -172,8 +175,8 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
         {form.formState.errors.notes && <p className="text-sm text-destructive">{form.formState.errors.notes.message}</p>}
       </div>
 
-      <Button type="submit" className="w-full group" disabled={form.formState.isSubmitting}>
-        {form.formState.isSubmitting ? "Creando..." : "Crear Turno"}
+      <Button type="submit" className="w-full group" disabled={isActionPending}>
+        {isActionPending ? "Creando..." : "Crear Turno"}
         <PlusCircle className="w-4 h-4 ml-2 opacity-70 group-hover:opacity-100 transition-opacity" />
       </Button>
     </form>

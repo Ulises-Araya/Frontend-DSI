@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -28,7 +28,8 @@ const RegisterSchema = z.object({
 type RegisterFormValues = z.infer<typeof RegisterSchema>;
 
 export function RegisterForm() {
-  const [state, formAction] = useActionState(registerUser, null);
+  const [state, formAction, isActionPending] = useActionState(registerUser, null);
+  const [, startTransition] = useTransition();
   const { toast } = useToast();
 
   const form = useForm<RegisterFormValues>({
@@ -64,7 +65,9 @@ export function RegisterForm() {
   ) => {
     if (event && event.target instanceof HTMLFormElement) {
       const formData = new FormData(event.target);
-      formAction(formData);
+      startTransition(() => {
+        formAction(formData);
+      });
     } else {
       // Fallback: construct FormData from RHF's validated data.
       const formData = new FormData();
@@ -73,7 +76,9 @@ export function RegisterForm() {
       formData.append('dni', _data.dni);
       formData.append('password', _data.password);
       formData.append('confirmPassword', _data.confirmPassword);
-      formAction(formData);
+      startTransition(() => {
+        formAction(formData);
+      });
     }
   };
 
@@ -118,8 +123,8 @@ export function RegisterForm() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full group relative" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? "Creando cuenta..." : "Crear Cuenta"}
+          <Button type="submit" className="w-full group relative" disabled={isActionPending}>
+            {isActionPending ? "Creando cuenta..." : "Crear Cuenta"}
             <UserPlus className="w-4 h-4 ml-2 opacity-70 group-hover:opacity-100 transition-opacity" />
           </Button>
           <Button variant="link" asChild className="text-accent hover:text-accent/80">

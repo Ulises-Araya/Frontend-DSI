@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -22,7 +22,8 @@ const LoginSchema = z.object({
 type LoginFormValues = z.infer<typeof LoginSchema>;
 
 export function LoginForm() {
-  const [state, formAction] = useActionState(loginUser, null);
+  const [state, formAction, isActionPending] = useActionState(loginUser, null);
+  const [, startTransition] = useTransition();
   const { toast } = useToast();
 
   const form = useForm<LoginFormValues>({
@@ -50,14 +51,16 @@ export function LoginForm() {
   ) => {
     if (event && event.target instanceof HTMLFormElement) {
       const formData = new FormData(event.target);
-      formAction(formData);
+      startTransition(() => {
+        formAction(formData);
+      });
     } else {
-      // Fallback if event.target is not available, though it should be for form submissions.
-      // Construct FormData from RHF's validated data.
       const formData = new FormData();
       formData.append('dni', _data.dni);
       formData.append('password', _data.password);
-      formAction(formData);
+      startTransition(() => {
+        formAction(formData);
+      });
     }
   };
 
@@ -96,8 +99,8 @@ export function LoginForm() {
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full group relative" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? "Ingresando..." : "Iniciar Sesión"}
+          <Button type="submit" className="w-full group relative" disabled={isActionPending}>
+            {isActionPending ? "Ingresando..." : "Iniciar Sesión"}
             <KeyRound className="w-4 h-4 ml-2 opacity-70 group-hover:opacity-100 transition-opacity" />
           </Button>
           <Button variant="link" asChild className="text-accent hover:text-accent/80">

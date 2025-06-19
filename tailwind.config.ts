@@ -10,8 +10,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        body: ['Inter', 'sans-serif'],
-        headline: ['Inter', 'sans-serif'],
+        body: ['EB Garamond', 'serif'],
+        headline: ['Almendra SC', 'serif'],
         code: ['monospace'],
       },
       colors: {
@@ -88,10 +88,20 @@ export default {
             height: '0',
           },
         },
+        'soft-glow': {
+          '0%, 100%': { opacity: '0.7', boxShadow: '0 0 5px hsl(var(--accent))' },
+          '50%': { opacity: '1', boxShadow: '0 0 15px hsl(var(--accent))' },
+        },
+        'leaf-sway': {
+          '0%, 100%': { transform: 'rotate(-1deg)' },
+          '50%': { transform: 'rotate(1deg)' },
+        }
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
+        'soft-glow': 'soft-glow 3s ease-in-out infinite',
+        'leaf-sway': 'leaf-sway 5s ease-in-out infinite alternate',
       },
     },
   },

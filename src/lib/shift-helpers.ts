@@ -1,3 +1,4 @@
+
 import type { Shift, ShiftStatus, User } from './types';
 import { usersDB } from './auth-helpers';
 
@@ -13,7 +14,7 @@ export let shiftsDB: Shift[] = [
     notes: 'Repasar parcial.', 
     area: 'Sala Virtual A', 
     status: 'accepted', 
-    creatorId: '2',
+    creatorId: '2', // Regular User
     creatorDni: '12345678',
     creatorFullName: 'Regular User',
     invitedUserDnis: [] 
@@ -28,17 +29,43 @@ export let shiftsDB: Shift[] = [
     notes: 'Definir alcance y tecnologías.', 
     area: 'Laboratorio 3', 
     status: 'pending', 
-    creatorId: '2',
+    creatorId: '2', // Regular User
     creatorDni: '12345678',
     creatorFullName: 'Regular User',
-    invitedUserDnis: ['87654321'] 
+    invitedUserDnis: [] // Initially no one, can be modified by inviteUserToShiftDB
   },
+  {
+    id: 's3',
+    date: '2024-08-20',
+    startTime: '09:00',
+    endTime: '10:30',
+    theme: 'Revisión de Prácticas Avanzadas',
+    participantCount: 2,
+    notes: 'Traer dudas específicas sobre concurrencia.',
+    area: 'Aula Magna',
+    status: 'pending',
+    creatorId: '1', // Admin User
+    creatorDni: 'admin',
+    creatorFullName: 'Admin User',
+    invitedUserDnis: ['12345678'] // Regular User DNI
+  }
 ];
 
 export function getShiftsByUserId(userId: string): Shift[] {
   const user = usersDB.find(u => u.id === userId);
   if (!user) return [];
-  return shiftsDB.filter(shift => 
+  
+  // Fetch all shifts and populate creator details
+  const allShiftsWithDetails = shiftsDB.map(shift => {
+    const creator = usersDB.find(u => u.id === shift.creatorId);
+    return {
+      ...shift,
+      creatorDni: creator?.dni || shift.creatorDni, // Keep existing if creator not found (e.g., for new shifts)
+      creatorFullName: creator?.fullName || shift.creatorFullName, // Keep existing
+    };
+  });
+
+  return allShiftsWithDetails.filter(shift => 
     shift.creatorId === userId || shift.invitedUserDnis.includes(user.dni)
   );
 }
@@ -48,8 +75,8 @@ export function getAllShifts(): Shift[] {
     const creator = usersDB.find(u => u.id === shift.creatorId);
     return {
       ...shift,
-      creatorDni: creator?.dni,
-      creatorFullName: creator?.fullName,
+      creatorDni: creator?.dni || shift.creatorDni,
+      creatorFullName: creator?.fullName || shift.creatorFullName,
     };
   });
 }
@@ -70,6 +97,10 @@ export function updateShiftStatus(shiftId: string, status: ShiftStatus): Shift |
   const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
   if (shiftIndex > -1) {
     shiftsDB[shiftIndex].status = status;
+    // Ensure creator details are present if not already
+    const creator = usersDB.find(u => u.id === shiftsDB[shiftIndex].creatorId);
+    shiftsDB[shiftIndex].creatorDni = creator?.dni || shiftsDB[shiftIndex].creatorDni;
+    shiftsDB[shiftIndex].creatorFullName = creator?.fullName || shiftsDB[shiftIndex].creatorFullName;
     return shiftsDB[shiftIndex];
   }
   return undefined;
@@ -90,5 +121,10 @@ export function inviteUserToShiftDB(shiftId: string, userDni: string): Shift | {
   }
 
   shiftsDB[shiftIndex].invitedUserDnis.push(userDni);
+  // Ensure creator details are present if not already
+  const creator = usersDB.find(u => u.id === shiftsDB[shiftIndex].creatorId);
+  shiftsDB[shiftIndex].creatorDni = creator?.dni || shiftsDB[shiftIndex].creatorDni;
+  shiftsDB[shiftIndex].creatorFullName = creator?.fullName || shiftsDB[shiftIndex].creatorFullName;
   return shiftsDB[shiftIndex];
 }
+

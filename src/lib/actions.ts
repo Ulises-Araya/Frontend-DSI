@@ -2,7 +2,15 @@
 "use server";
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
-import { findUserByDni, verifyPassword, addUser, findUserByEmail, usersDB } from './auth-helpers';
+import { 
+  findUserByDni, 
+  verifyPassword, 
+  addUser, 
+  findUserByEmail, 
+  usersDB,
+  updateUserDetails,
+  updateUserPassword as updateUserPasswordHelper
+} from './auth-helpers';
 import { 
   addShift as addShiftDB, 
   getShiftsByUserId as getShiftsByUserIdDB, 
@@ -31,18 +39,33 @@ const RegisterSchema = z.object({
 });
 
 const CreateShiftSchema = z.object({
-  date: z.string().min(1, "Fecha es requerida"), // Assuming YYYY-MM-DD from FormData
+  date: z.string().min(1, "Fecha es requerida"), 
   startTime: z.string().min(1, "Hora de inicio es requerida"),
   endTime: z.string().min(1, "Hora de fin es requerida"),
   theme: z.string().min(1, "Temática es requerida"),
   notes: z.string().optional(),
   area: z.string().min(1, "Área es requerida"),
-  invitedUserDnis: z.string().optional().refine(val => { // Comma-separated DNI string
+  invitedUserDnis: z.string().optional().refine(val => { 
     if (!val || val.trim() === "") return true;
     const dnis = val.split(',').map(d => d.trim());
     return dnis.every(dni => /^\d{7,8}$/.test(dni));
   }, "Uno o más DNIs invitados no son válidos (7-8 dígitos)."),
 });
+
+const UpdateProfileSchema = z.object({
+  fullName: z.string().min(3, "Nombre completo debe tener al menos 3 caracteres."),
+  email: z.string().email("Email inválido."),
+});
+
+const ChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Contraseña actual es requerida."),
+  newPassword: z.string().min(6, "Nueva contraseña debe tener al menos 6 caracteres."),
+  confirmNewPassword: z.string(),
+}).refine(data => data.newPassword === data.confirmNewPassword, {
+  message: "Las nuevas contraseñas no coinciden.",
+  path: ["confirmNewPassword"],
+});
+
 
 interface MockSession {
   currentUserId: string | null;
@@ -126,13 +149,13 @@ export async function createShift(prevState: ActionResponse | null, formData: Fo
   const data = validatedFields.data;
   
   const invitedDnisArray = data.invitedUserDnis?.split(',').map(d => d.trim()).filter(d => d && d !== user.dni) || [];
-  const uniqueInvitedDnisArray = Array.from(new Set(invitedDnisArray)); // Ensure unique DNIs
+  const uniqueInvitedDnisArray = Array.from(new Set(invitedDnisArray)); 
 
   if (uniqueInvitedDnisArray.some(dni => !findUserByDni(dni))) {
     return { type: 'error', message: 'Uno o más DNIs invitados no corresponden a usuarios registrados.' };
   }
 
-  const participantCount = 1 + uniqueInvitedDnisArray.length; // Creator + unique invited users
+  const participantCount = 1 + uniqueInvitedDnisArray.length; 
   
   const newShift = addShiftDB({ 
     ...data, 
@@ -200,4 +223,58 @@ export async function respondToShiftInvitation(prevState: ActionResponse | null,
   
   const message = response === 'accept' ? 'Invitación aceptada.' : 'Invitación rechazada.';
   return { type: 'success', message, shift: result };
+}
+
+export async function updateUserProfile(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const user = await getCurrentUserMock();
+  if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
+
+  const validatedFields = UpdateProfileSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!validatedFields.success) {
+    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
+  }
+  
+  const { fullName, email } = validatedFields.data;
+
+  // Check if email is changing and if the new email is already taken by another user
+  if (email !== user.email) {
+    const existingUserWithNewEmail = findUserByEmail(email);
+    if (existingUserWithNewEmail && existingUserWithNewEmail.id !== user.id) {
+      return { type: 'error', message: 'El nuevo email ya está registrado por otro usuario.', errors: { email: ['Email ya en uso.'] } };
+    }
+  }
+  
+  const updatedUser = updateUserDetails(user.id, { fullName, email });
+
+  if (updatedUser) {
+    // Optionally update mockSession if user details changed affect it, e.g., fullName
+    if (globalThis.mockSession && globalThis.mockSession.currentUserId === updatedUser.id) {
+        // For now, we only store id, role, dni in session, so no session update needed here.
+        // If session stored fullName, we'd update it:
+        // globalThis.mockSession.currentUserFullName = updatedUser.fullName;
+    }
+    return { type: 'success', message: 'Perfil actualizado exitosamente.' };
+  }
+  return { type: 'error', message: 'Error al actualizar el perfil.' };
+}
+
+export async function changeUserPassword(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const user = await getCurrentUserMock();
+  if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
+
+  const validatedFields = ChangePasswordSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!validatedFields.success) {
+    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
+  }
+  const { currentPassword, newPassword } = validatedFields.data;
+
+  if (!verifyPassword(currentPassword, user.password)) {
+    return { type: 'error', message: 'La contraseña actual es incorrecta.', errors: { currentPassword: ['Contraseña actual incorrecta.'] } };
+  }
+
+  const success = updateUserPasswordHelper(user.id, newPassword);
+  if (success) {
+    return { type: 'success', message: 'Contraseña actualizada exitosamente.' };
+  }
+  return { type: 'error', message: 'Error al actualizar la contraseña.' };
 }

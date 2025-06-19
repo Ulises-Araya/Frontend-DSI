@@ -80,15 +80,15 @@ export function DashboardHeader() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => router.push(user.role === 'admin' ? '/dashboard/admin' : '/dashboard/user')}>
                   <LayoutDashboard className="mr-2 h-4 w-4" />
-                  <span>{user.role === 'admin' ? 'Panel Admin' : 'Mis Turnos Creados'}</span>
+                  <span>{user.role === 'admin' ? 'Panel Admin' : 'Mis Turnos'}</span>
                 </DropdownMenuItem>
                 {user.role === 'user' && (
                   <DropdownMenuItem onClick={() => router.push('/dashboard/user/invited-shifts')}>
                     <Handshake className="mr-2 h-4 w-4" />
-                    <span>Turnos Invitados</span>
+                    <span>Invitaciones Pendientes</span>
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem disabled>
+                <DropdownMenuItem onClick={() => router.push('/dashboard/settings')}>
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Configuración</span>
                 </DropdownMenuItem>

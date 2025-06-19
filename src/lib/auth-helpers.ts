@@ -1,3 +1,4 @@
+
 import type { User, UserRole } from './types';
 
 // In-memory store for users (replace with actual DB in a real app)
@@ -27,4 +28,26 @@ export function addUser(newUser: Omit<User, 'id' | 'role'>): User {
   };
   usersDB.push(user);
   return user;
+}
+
+export function updateUserDetails(userId: string, data: { fullName?: string; email?: string }): User | undefined {
+  const userIndex = usersDB.findIndex(user => user.id === userId);
+  if (userIndex === -1) return undefined;
+
+  if (data.fullName) {
+    usersDB[userIndex].fullName = data.fullName;
+  }
+  if (data.email) {
+    usersDB[userIndex].email = data.email;
+  }
+  return usersDB[userIndex];
+}
+
+export function updateUserPassword(userId: string, newPassword: string): boolean {
+  const userIndex = usersDB.findIndex(user => user.id === userId);
+  if (userIndex === -1) return false;
+
+  // In a real app, hash the password before storing
+  usersDB[userIndex].password = newPassword;
+  return true;
 }

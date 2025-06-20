@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { updateShift } from "@/lib/actions"; // getManagedRooms removed as it's passed via prop
+import { updateShiftDetails } from "@/lib/actions"; // Changed from updateShift
 import { useToast } from "@/hooks/use-toast";
 import { Calendar as CalendarIcon, Save, Tent } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -41,7 +41,7 @@ const UpdateShiftFormSchema = z.object({
 type UpdateShiftFormValues = z.infer<typeof UpdateShiftFormSchema>;
 
 export function EditShiftForm({ shift, availableRooms, onShiftUpdated, setOpen }: EditShiftFormProps) {
-  const [state, formAction, isActionPending] = useActionState(updateShift, null);
+  const [state, formAction, isActionPending] = useActionState(updateShiftDetails, null); // Changed from updateShift
   const [, startTransition] = useTransition();
   const { toast } = useToast();
 

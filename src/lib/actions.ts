@@ -19,7 +19,6 @@ import {
   inviteUserToShiftDB,
   acceptShiftInvitationDB,
   rejectShiftInvitationDB,
-  cancelShiftDB,
   updateShiftDetailsDB
 } from './shift-helpers';
 import type { Shift, ShiftStatus, User, ActionResponse } from './types';
@@ -290,27 +289,6 @@ export async function changeUserPassword(prevState: ActionResponse | null, formD
     return { type: 'success', message: 'Contraseña actualizada exitosamente.' };
   }
   return { type: 'error', message: 'Error al actualizar la contraseña.' };
-}
-
-export async function cancelShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const user = await getCurrentUserMock();
-  if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
-
-  const shiftId = formData.get('shiftId') as string;
-  if (!shiftId) return { type: 'error', message: 'ID de turno no proporcionado.' };
-
-  const shiftToCancel = getAllShiftsDB().find(s => s.id === shiftId);
-  if (!shiftToCancel) return { type: 'error', message: 'Turno no encontrado.' };
-
-  if (user.role !== 'admin' && shiftToCancel.creatorId !== user.id) {
-    return { type: 'error', message: 'No tienes permiso para cancelar este turno.' };
-  }
-
-  const result = cancelShiftDB(shiftId);
-  if ('error' in result) {
-    return { type: 'error', message: result.error };
-  }
-  return { type: 'success', message: 'Turno cancelado exitosamente.', shift: result };
 }
 
 export async function updateShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {

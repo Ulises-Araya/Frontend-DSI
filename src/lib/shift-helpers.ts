@@ -148,13 +148,6 @@ export function rejectShiftInvitationDB(shiftId: string, rejectingUserDni: strin
   return populateCreatorDetails(shift);
 }
 
-export function cancelShiftDB(shiftId: string): Shift | { error: string } {
-  const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
-  if (shiftIndex === -1) return { error: 'Turno no encontrado.' };
-  shiftsDB[shiftIndex].status = 'cancelled';
-  return populateCreatorDetails(shiftsDB[shiftIndex]);
-}
-
 export function updateShiftDetailsDB(
   shiftId: string, 
   data: Pick<Shift, 'date' | 'startTime' | 'endTime' | 'theme' | 'notes' | 'area'>

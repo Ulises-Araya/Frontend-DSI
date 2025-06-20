@@ -8,8 +8,10 @@ import { UpdateProfileForm } from '@/components/dashboard/settings/UpdateProfile
 import { ChangePasswordForm } from '@/components/dashboard/settings/ChangePasswordForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Settings as SettingsIcon, UserCog, KeyRound } from 'lucide-react';
+import { Settings as SettingsIcon, UserCog, KeyRound, ArrowLeft } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -32,9 +34,12 @@ export default function SettingsPage() {
   if (isLoading) {
     return (
       <div className="space-y-8">
-        <div className="flex items-center gap-3">
-          <Skeleton className="h-10 w-10 rounded-full" />
-          <Skeleton className="h-8 w-48" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <Skeleton className="h-8 w-48" />
+          </div>
+          <Skeleton className="h-10 w-36" />
         </div>
         <Card className="bg-card/70 backdrop-blur-sm border-primary/20">
           <CardHeader>
@@ -68,13 +73,23 @@ export default function SettingsPage() {
     return <p className="text-center text-muted-foreground">No se pudo cargar la información del usuario.</p>;
   }
 
+  const dashboardLink = user.role === 'admin' ? '/dashboard/admin' : '/dashboard/user';
+
   return (
     <div className="space-y-8 max-w-3xl mx-auto">
-      <div className="flex items-center gap-3">
-        <SettingsIcon className="w-10 h-10 text-primary" />
-        <h1 className="text-3xl md:text-4xl font-headline text-primary">
-          Configuración de Cuenta
-        </h1>
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="flex items-center gap-3">
+          <SettingsIcon className="w-10 h-10 text-primary" />
+          <h1 className="text-3xl md:text-4xl font-headline text-primary">
+            Configuración de Cuenta
+          </h1>
+        </div>
+        <Button variant="outline" asChild>
+          <Link href={dashboardLink}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Volver al Panel
+          </Link>
+        </Button>
       </div>
       
       <Card className="bg-card/70 backdrop-blur-sm border-primary/20 shadow-lg">

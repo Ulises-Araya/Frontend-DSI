@@ -44,9 +44,9 @@ const CreateShiftSchema = z.object({
   date: z.string().min(1, "Fecha es requerida"), 
   startTime: z.string().min(1, "Hora de inicio es requerida"),
   endTime: z.string().min(1, "Hora de fin es requerida"),
-  theme: z.string().min(1, "Temática es requerida"),
+  theme: z.string().min(3, "Temática debe tener al menos 3 caracteres"),
   notes: z.string().optional(),
-  area: z.string().min(1, "Área es requerida"),
+  area: z.string().min(3, "Área debe tener al menos 3 caracteres"),
   invitedUserDnis: z.string().optional().refine(val => { 
     if (!val || val.trim() === "") return true;
     const dnis = val.split(',').map(d => d.trim());
@@ -59,15 +59,22 @@ const UpdateShiftSchema = z.object({
   date: z.string().min(1, "Fecha es requerida"), 
   startTime: z.string().min(1, "Hora de inicio es requerida"),
   endTime: z.string().min(1, "Hora de fin es requerida"),
-  theme: z.string().min(1, "Temática es requerida"),
+  // theme: z.string().min(3, "Temática debe tener al menos 3 caracteres"), // Theme is not editable
   notes: z.string().optional(),
-  area: z.string().min(1, "Área es requerida"),
-  invitedUserDnis: z.string().optional().refine(val => { 
-    if (!val || val.trim() === "") return true;
-    const dnis = val.split(',').map(d => d.trim());
-    return dnis.every(dni => /^\d{7,8}$/.test(dni));
-  }, "Uno o más DNIs invitados no son válidos (7-8 dígitos)."),
+  area: z.string().min(3, "Área debe tener al menos 3 caracteres"),
+  // invitedUserDnis: z.string().optional().refine(...) // Invited users are not editable
+}).refine(data => {
+    // Time validation logic if needed, ensure this doesn't break
+    // For example, if startTime and endTime are always present in the form data for validation.
+    // If startTime and endTime are not part of this schema for some reason, adjust validation.
+    const [startH, startM] = data.startTime.split(':').map(Number);
+    const [endH, endM] = data.endTime.split(':').map(Number);
+    return (startH * 60 + startM) < (endH * 60 + endM);
+}, {
+    message: "Hora de fin debe ser posterior a hora de inicio.",
+    path: ["endTime"],
 });
+
 
 const UpdateProfileSchema = z.object({
   fullName: z.string().min(3, "Nombre completo debe tener al menos 3 caracteres."),
@@ -321,7 +328,7 @@ export async function updateShift(prevState: ActionResponse | null, formData: Fo
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
   
-  const { shiftId, ...updateData } = validatedFields.data;
+  const { shiftId, ...editableData } = validatedFields.data;
 
   const shiftToUpdate = getAllShiftsDB().find(s => s.id === shiftId);
   if (!shiftToUpdate) return { type: 'error', message: 'Turno no encontrado.' };
@@ -330,22 +337,17 @@ export async function updateShift(prevState: ActionResponse | null, formData: Fo
     return { type: 'error', message: 'No tienes permiso para editar este turno.' };
   }
   
-  const invitedDnisArray = updateData.invitedUserDnis?.split(',').map(d => d.trim()).filter(Boolean) || [];
-
   const result = updateShiftDetailsDB(shiftId, {
-    date: updateData.date,
-    startTime: updateData.startTime,
-    endTime: updateData.endTime,
-    theme: updateData.theme,
-    notes: updateData.notes,
-    area: updateData.area,
-    invitedUserDnis: invitedDnisArray,
-    // participantCount is derived in updateShiftDetailsDB
+    date: editableData.date,
+    startTime: editableData.startTime,
+    endTime: editableData.endTime,
+    notes: editableData.notes,
+    area: editableData.area,
+    // theme and invitedUserDnis are NOT passed here, they are preserved by updateShiftDetailsDB
   });
 
   if ('error' in result) {
     return { type: 'error', message: result.error };
   }
-  // Conceptual: Notify users if admin edited and user was not the admin.
   return { type: 'success', message: 'Turno actualizado exitosamente.', shift: result };
 }

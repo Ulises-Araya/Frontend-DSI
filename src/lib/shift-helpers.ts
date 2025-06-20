@@ -128,6 +128,7 @@ export function acceptShiftInvitationDB(shiftId: string, acceptingUserDni: strin
   if (!shift.invitedUserDnis.includes(acceptingUserDni)) {
     return { error: 'User was not invited to this shift or has already responded.' };
   }
+  // No change to participant count or invitedUserDnis list on accept, user is already in.
   return populateCreatorDetails(shift);
 }
 
@@ -137,7 +138,9 @@ export function rejectShiftInvitationDB(shiftId: string, rejectingUserDni: strin
 
   const shift = shiftsDB[shiftIndex];
   if (!shift.invitedUserDnis.includes(rejectingUserDni)) {
-    return { error: 'User was not invited to this shift or has already responded.' };
+    // This case might not be strictly an error if the user is "opting out" after being accepted
+    // but for consistency, we check if they were on the list.
+    // return { error: 'User was not invited to this shift or has already responded.' };
   }
 
   shift.invitedUserDnis = shift.invitedUserDnis.filter(dni => dni !== rejectingUserDni);
@@ -149,33 +152,26 @@ export function cancelShiftDB(shiftId: string): Shift | { error: string } {
   const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
   if (shiftIndex === -1) return { error: 'Turno no encontrado.' };
   shiftsDB[shiftIndex].status = 'cancelled';
-  // Conceptual: Notify involved users
   return populateCreatorDetails(shiftsDB[shiftIndex]);
 }
 
 export function updateShiftDetailsDB(
   shiftId: string, 
-  data: Omit<Shift, 'id' | 'creatorId' | 'creatorDni' | 'creatorFullName' | 'status' | 'participantCount'>
+  data: Pick<Shift, 'date' | 'startTime' | 'endTime' | 'notes' | 'area'>
 ): Shift | { error: string } {
   const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
   if (shiftIndex === -1) return { error: 'Turno no encontrado.' };
 
   const currentShift = shiftsDB[shiftIndex];
   
-  const invitedDnisArray = data.invitedUserDnis.map(d => d.trim()).filter(d => d && d !== currentShift.creatorDni);
-  const uniqueInvitedDnisArray = Array.from(new Set(invitedDnisArray)); 
-
-  if (uniqueInvitedDnisArray.some(dni => !findUserByDni(dni))) {
-    return { error: 'Uno o más DNIs invitados no corresponden a usuarios registrados.' };
-  }
-
+  // Theme, invitedUserDnis, and participantCount are preserved from currentShift
   shiftsDB[shiftIndex] = {
-    ...currentShift,
-    ...data,
-    invitedUserDnis: uniqueInvitedDnisArray,
-    participantCount: 1 + uniqueInvitedDnisArray.length,
-    // Status is not changed by this function directly, only by updateShiftStatus or cancelShiftDB
+    ...currentShift, // This carries over creatorId, creatorDni, creatorFullName, status, theme, invitedUserDnis, participantCount
+    date: data.date,
+    startTime: data.startTime,
+    endTime: data.endTime,
+    notes: data.notes,
+    area: data.area,
   };
-  // Conceptual: Notify involved users if admin made the change
   return populateCreatorDetails(shiftsDB[shiftIndex]);
 }

@@ -157,7 +157,6 @@ async function fetchUserDetailsById(userId: string, token: string): Promise<User
     }
     const backendUser = await response.json();
     
-    // FIX: Map backend role 'usuario' to frontend role 'user'
     const frontendRole = backendUser.rol === 'usuario' ? 'user' : backendUser.rol;
 
     return {
@@ -183,10 +182,6 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
   }
   const { dni, password } = validatedFields.data;
 
-  let sessionData: { userId: string; token: string; userRole: UserRole | null; userDni: string | null } | null = null;
-  let errorMessage: string | null = null;
-  let fieldErrors: Record<string, string[] | undefined> | undefined = undefined;
-
   try {
     const loginResponse = await fetch(`${BACKEND_BASE_URL}/auth/login`, {
       method: 'POST',
@@ -197,64 +192,36 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
     const loginData = await loginResponse.json();
 
     if (!loginResponse.ok) {
-      errorMessage = loginData.error || 'Credenciales inválidas o error del servidor.';
-    } else {
-      const userId = loginData.id?.toString();
-      const token = loginData.token;
-
-      if (!userId || !token) {
-        errorMessage = 'Respuesta de login inválida desde el backend (faltan ID o token).';
-      } else {
-        const userDetails = await fetchUserDetailsById(userId, token);
-        if (userDetails) {
-          sessionData = {
-            userId: userId,
-            token: token,
-            userRole: userDetails.role,
-            userDni: userDetails.dni,
-          };
-        } else {
-          errorMessage = 'Login exitoso pero no se pudieron obtener detalles completos del usuario.';
-        }
-      }
+      return { type: 'error', message: loginData.error || 'Credenciales inválidas o error del servidor.' };
     }
+
+    const { id: userId, token, rol: backendRole } = loginData;
+    const frontendRole = backendRole === 'usuario' ? 'user' : backendRole;
+
+    if (!userId || !token || !frontendRole) {
+      return { type: 'error', message: 'Respuesta de login inválida desde el backend.' };
+    }
+    
+    if (globalThis.mockSession) {
+      globalThis.mockSession.currentUserId = userId.toString();
+      globalThis.mockSession.token = token;
+      globalThis.mockSession.currentUserRole = frontendRole;
+      globalThis.mockSession.currentUserDni = dni;
+    }
+    
+    if (frontendRole === 'admin') {
+      redirect('/dashboard/admin');
+    } else {
+      redirect('/dashboard/user');
+    }
+
   } catch (error: any) {
     console.error('Error en la comunicación con el backend durante el login:', error);
-    errorMessage = 'Error de conexión con el servidor de autenticación.';
+    let errorMessage = 'Error de conexión con el servidor de autenticación.';
     if (error.cause?.code === 'ECONNREFUSED') {
         errorMessage = `No se pudo conectar a ${BACKEND_BASE_URL}. Asegúrate de que el servidor backend esté corriendo.`;
     }
-  }
-
-  if (errorMessage || !sessionData || !sessionData.userRole) {
-    if (globalThis.mockSession) {
-        globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null, token: null };
-    }
-    return { 
-      type: 'error', 
-      message: errorMessage || 'Error desconocido durante el login.', 
-      errors: fieldErrors 
-    };
-  }
-
-  if (globalThis.mockSession) {
-    globalThis.mockSession.currentUserId = sessionData.userId;
-    globalThis.mockSession.token = sessionData.token;
-    globalThis.mockSession.currentUserRole = sessionData.userRole;
-    globalThis.mockSession.currentUserDni = sessionData.userDni;
-  }
-
-  if (sessionData.userRole === 'admin') {
-    console.log('Login successful for role: admin. Redirecting to /dashboard/admin');
-    redirect('/dashboard/admin');
-  } else if (sessionData.userRole === 'user') {
-    console.log('Login successful for role: user. Redirecting to /dashboard/user');
-    redirect('/dashboard/user');
-  } else {
-    if (globalThis.mockSession) {
-        globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null, token: null };
-    }
-    return { type: 'error', message: 'Rol de usuario no reconocido después del login, no se puede redirigir.' };
+    return { type: 'error', message: errorMessage };
   }
 }
 
@@ -267,7 +234,7 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
   const { fullName, email, dni, password } = validatedFields.data;
 
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/usuarios`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nombre: fullName, email, dni, password, rol: 'usuario' }),
@@ -283,7 +250,7 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
       }
       return { type: 'error', message: data.error || 'Error al registrar desde el backend.', errors: fieldErrors };
     }
-    return { type: 'success', message: data.mensaje || 'Registro exitoso. Por favor, inicia sesión.' };
+    return { type: 'success', message: 'Registro exitoso. Por favor, inicia sesión.' };
   } catch (error) {
     console.error('Error en registerUser:', error);
     return { type: 'error', message: 'Error de conexión con el servidor de registro.' };
@@ -299,6 +266,20 @@ export async function getCurrentUser(): Promise<User | null> {
 }
 
 export async function logoutUser() {
+  const session = globalThis.mockSession;
+  if (session && session.token) {
+    try {
+      await fetch(`${BACKEND_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.token}`,
+        },
+      });
+    } catch (error) {
+        console.error("Error calling backend logout, clearing session anyway.", error);
+    }
+  }
+
   if (globalThis.mockSession) {
     globalThis.mockSession.currentUserId = null;
     globalThis.mockSession.currentUserRole = null;
@@ -454,7 +435,6 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
         ...user,
         fullName: fullName,
         email: email,
-        // profilePictureUrl se mantiene como estaba en el frontend, ya que el backend no lo gestiona
     };
     console.log(`Notification (simulated): User profile for ${updatedFrontendUser.fullName} (ID: ${user.id}) updated via backend.`);
     return { type: 'success', message: responseData.mensaje || 'Perfil actualizado exitosamente.', user: updatedFrontendUser };
@@ -714,3 +694,5 @@ export async function findUserByDni(dni: string): Promise<User | null> {
         return null;
     }
 }
+
+    

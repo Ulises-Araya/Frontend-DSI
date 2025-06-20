@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { Shift, ShiftStatus, UserRole, ActionResponse, EditShiftFormProps } from '@/lib/types';
+import type { Shift, ShiftStatus, UserRole } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -132,95 +132,6 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
     });
   }
 
-  const renderUserActions = () => {
-    if (canEditOrCancel) {
-      return (
-        <div className="flex gap-2 mt-2 sm:mt-0">
-          <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Edit className="w-4 h-4 mr-1" /> Editar
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[480px] bg-card border-primary/30">
-              <DialogHeader>
-                <DialogTitle className="font-headline text-2xl text-primary">Editar Turno</DialogTitle>
-                <DialogDescription className="text-muted-foreground">Modifica los detalles de tu turno.</DialogDescription>
-              </DialogHeader>
-              <EditShiftForm 
-                shift={shift} 
-                onShiftUpdated={() => { 
-                  if(onShiftUpdate) onShiftUpdate(); 
-                  setIsEditModalOpen(false); 
-                }} 
-                setOpen={setIsEditModalOpen} 
-              />
-            </DialogContent>
-          </Dialog>
-          
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={isCancelActionPending}>
-                <Trash2 className="w-4 h-4 mr-1" /> {isCancelActionPending ? "Cancelando..." : "Cancelar Turno"}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle className="flex items-center"><AlertTriangle className="w-5 h-5 mr-2 text-destructive"/>¿Estás seguro?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Esta acción no se puede deshacer. El turno "{shift.theme}" será cancelado permanentemente.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cerrar</AlertDialogCancel>
-                <AlertDialogAction onClick={handleCancelShift} className="bg-destructive hover:bg-destructive/90">Confirmar Cancelación</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      );
-    }
-    
-    if (isInvited && currentUserRole === 'user') {
-      if (shift.status === 'pending') {
-        return (
-          <div className="flex w-full sm:w-auto justify-around sm:justify-start gap-2">
-            <Button 
-              size="sm" 
-              onClick={() => handleInvitationResponse('accept')} 
-              disabled={isInvitationActionPending}
-              className="bg-primary hover:bg-primary/80 flex-1 sm:flex-none"
-            >
-              <CheckCircle className="w-4 h-4 mr-1" /> Aceptar
-            </Button>
-            <Button 
-              variant="destructive" 
-              size="sm" 
-              onClick={() => handleInvitationResponse('reject')}
-              disabled={isInvitationActionPending}
-              className="flex-1 sm:flex-none"
-            >
-              <XCircle className="w-4 h-4 mr-1" /> Rechazar
-            </Button>
-          </div>
-        );
-      } else if (shift.status === 'accepted') { // Shift accepted by admin, invitee can still opt-out
-         return (
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => handleInvitationResponse('reject')} // 'reject' action handles removing user
-            disabled={isInvitationActionPending}
-            className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive flex-1 sm:flex-none"
-          >
-            <LogOut className="w-4 h-4 mr-1" /> No Asistir
-          </Button>
-        );
-      }
-    }
-    return <div className="h-9"></div>; // Placeholder for consistent height when no actions
-  };
-
   return (
     <Card className="w-full shadow-lg hover:shadow-xl transition-shadow duration-300 bg-card/80 backdrop-blur-sm border-primary/20 hover:border-primary/40 flex flex-col">
       <CardHeader>
@@ -276,25 +187,104 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
           </div>
         )}
       </CardContent>
-      <CardFooter className="flex flex-col sm:flex-row justify-between items-center gap-2 pt-4 border-t border-border/50 mt-auto">
-        {currentUserRole === 'admin' && !isCreator ? ( // Admin specific status change for shifts they didn't create
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <span className="text-sm mr-2">Cambiar estado:</span>
-            <Select onValueChange={(value) => handleAdminStatusChange(value as ShiftStatus)} defaultValue={shift.status} disabled={isUpdatingStatus || shift.status === 'cancelled'}>
-              <SelectTrigger className="w-full sm:w-[150px] bg-background/70" disabled={isUpdatingStatus || shift.status === 'cancelled'}>
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="pending" disabled={shift.status === 'pending'}>Pendiente</SelectItem>
-                <SelectItem value="accepted" disabled={shift.status === 'accepted'}>Aceptado</SelectItem>
-                <SelectItem value="cancelled" disabled={shift.status === 'cancelled'}>Cancelado</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        ) : (
-          renderUserActions() 
-        )}
-         {(currentUserRole === 'admin' && isCreator && shift.status !== 'cancelled') && renderUserActions()} 
+      <CardFooter className="flex flex-col gap-3 pt-4 border-t border-border/50 mt-auto sm:flex-row sm:justify-between sm:items-center">
+        <div className="w-full sm:w-auto">
+          {currentUserRole === 'admin' && shift.status !== 'cancelled' && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm mr-1 sm:mr-2 whitespace-nowrap">Cambiar estado:</span>
+              <Select 
+                  onValueChange={(value) => handleAdminStatusChange(value as ShiftStatus)} 
+                  defaultValue={shift.status} 
+                  disabled={isUpdatingStatus}
+              >
+                <SelectTrigger className="flex-grow sm:w-[150px] bg-background/70">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending" disabled={shift.status === 'pending'}>Pendiente</SelectItem>
+                  <SelectItem value="accepted" disabled={shift.status === 'accepted'}>Aceptado</SelectItem>
+                  <SelectItem value="cancelled" disabled={shift.status === 'cancelled'}>Cancelado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+      
+        <div className="flex flex-row gap-2 w-full sm:w-auto justify-end">
+          {canEditOrCancel && (
+            <>
+              <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex-1 sm:flex-none">
+                    <Edit className="w-4 h-4 mr-1" /> Editar
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[480px] bg-card border-primary/30">
+                  <DialogHeader>
+                    <DialogTitle className="font-headline text-2xl text-primary">Editar Turno</DialogTitle>
+                    <DialogDescription className="text-muted-foreground">Modifica los detalles de este turno.</DialogDescription>
+                  </DialogHeader>
+                  <EditShiftForm 
+                    shift={shift} 
+                    onShiftUpdated={() => { 
+                      if(onShiftUpdate) onShiftUpdate(); 
+                      setIsEditModalOpen(false); 
+                    }} 
+                    setOpen={setIsEditModalOpen} 
+                  />
+                </DialogContent>
+              </Dialog>
+              
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" disabled={isCancelActionPending} className="flex-1 sm:flex-none">
+                    <Trash2 className="w-4 h-4 mr-1" /> {isCancelActionPending ? "Cancelando..." : "Cancelar"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center"><AlertTriangle className="w-5 h-5 mr-2 text-destructive"/>¿Estás seguro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Esta acción no se puede deshacer. El turno "{shift.theme}" será cancelado permanentemente.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cerrar</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleCancelShift} className="bg-destructive hover:bg-destructive/90">Confirmar Cancelación</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
+          )}
+      
+          {isInvited && currentUserRole === 'user' && (shift.status === 'pending' || shift.status === 'accepted') && (
+            <>
+              {shift.status === 'pending' && (
+                <>
+                  <Button size="sm" onClick={() => handleInvitationResponse('accept')} disabled={isInvitationActionPending} className="bg-primary hover:bg-primary/80 flex-1 sm:flex-none">
+                    <CheckCircle className="w-4 h-4 mr-1" /> Aceptar
+                  </Button>
+                  <Button variant="destructive" size="sm" onClick={() => handleInvitationResponse('reject')} disabled={isInvitationActionPending} className="flex-1 sm:flex-none">
+                    <XCircle className="w-4 h-4 mr-1" /> Rechazar
+                  </Button>
+                </>
+              )}
+              {shift.status === 'accepted' && (
+                 <Button variant="outline" size="sm" onClick={() => handleInvitationResponse('reject')} disabled={isInvitationActionPending} className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive flex-1 sm:flex-none">
+                  <LogOut className="w-4 h-4 mr-1" /> No Asistir
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+        
+        {/* Placeholder for consistent height if no actions visible for this user/shift state */}
+        {!canEditOrCancel && 
+         !(isInvited && currentUserRole === 'user' && (shift.status === 'pending' || shift.status === 'accepted')) &&
+         !(currentUserRole === 'admin' && shift.status !== 'cancelled') &&
+          <div className="h-9 w-full sm:hidden"></div> /* Hidden on sm and up to avoid conflict if admin controls are shown */
+        }
+
       </CardFooter>
     </Card>
   );

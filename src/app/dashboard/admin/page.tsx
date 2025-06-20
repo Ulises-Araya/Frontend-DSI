@@ -2,42 +2,40 @@
 "use client";
 
 import { useEffect, useState, useMemo } from 'react';
-import type { Shift, ShiftStatus } from '@/lib/types';
-import { getAllShiftsAdmin } from '@/lib/actions';
+import type { Shift, ShiftStatus, User } from '@/lib/types';
+import { getAllShiftsAdmin, getCurrentUserMock } from '@/lib/actions';
 import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card'; // Added CardFooter
-import { Search, FilterX, ShieldCheck, BookOpen } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
+import { Search, FilterX, ShieldCheck } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 
 export default function AdminDashboardPage() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allShifts, setAllShifts] = useState<Shift[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<ShiftStatus | 'all'>('all');
   const [filterArea, setFilterArea] = useState('');
 
-  async function loadAllShifts() {
+  async function loadAdminData() {
     setIsLoading(true);
-    const fetchedShifts = await getAllShiftsAdmin();
+    const [user, fetchedShifts] = await Promise.all([
+      getCurrentUserMock(),
+      getAllShiftsAdmin()
+    ]);
+    setCurrentUser(user);
     setAllShifts(fetchedShifts);
     setIsLoading(false);
   }
 
   useEffect(() => {
-    loadAllShifts();
+    loadAdminData();
   }, []);
 
-  const handleShiftStatusUpdate = (updatedShiftId: string, newStatus: ShiftStatus) => {
-    setAllShifts(prevShifts => 
-      prevShifts.map(shift => 
-        shift.id === updatedShiftId ? { ...shift, status: newStatus } : shift
-      )
-    );
-  };
 
   const filteredShifts = useMemo(() => {
     return allShifts.filter(shift => {
@@ -124,7 +122,7 @@ export default function AdminDashboardPage() {
         </CardContent>
       </Card>
 
-      {isLoading ? (
+      {isLoading || !currentUser ? (
          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3, 4, 5, 6].map(i => (
             <Card key={i} className="w-full shadow-lg">
@@ -145,8 +143,10 @@ export default function AdminDashboardPage() {
             <ShiftCard 
               key={shift.id} 
               shift={shift} 
-              currentUserRole="admin" 
-              onStatusChange={handleShiftStatusUpdate}
+              currentUserRole="admin"
+              currentUserId={currentUser.id}
+              currentUserDni={currentUser.dni}
+              onShiftUpdate={loadAdminData}
             />
           ))}
         </div>

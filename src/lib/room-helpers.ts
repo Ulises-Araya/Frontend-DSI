@@ -11,20 +11,20 @@ export let roomsDB: Room[] = [
   { id: 'room5', name: 'Biblioteca - Zona Silenciosa' },
 ];
 
-export function getRoomsDB(): Room[] {
+export async function getRoomsDB(): Promise<Room[]> {
   return [...roomsDB].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function findRoomById(id: string): Room | undefined {
+export async function findRoomById(id: string): Promise<Room | undefined> {
   return roomsDB.find(room => room.id === id);
 }
 
-export function findRoomByName(name: string): Room | undefined {
+export async function findRoomByName(name: string): Promise<Room | undefined> {
   return roomsDB.find(room => room.name.toLowerCase() === name.toLowerCase());
 }
 
-export function addRoomDB(name: string): Room | { error: string } {
-  if (findRoomByName(name)) {
+export async function addRoomDB(name: string): Promise<Room | { error: string }> {
+  if (await findRoomByName(name)) {
     return { error: 'Ya existe una sala con este nombre.' };
   }
   const newRoom: Room = {
@@ -35,8 +35,8 @@ export function addRoomDB(name: string): Room | { error: string } {
   return newRoom;
 }
 
-export function updateRoomDB(id: string, newName: string): Room | { error: string } {
-  const existingRoomWithName = findRoomByName(newName);
+export async function updateRoomDB(id: string, newName: string): Promise<Room | { error: string }> {
+  const existingRoomWithName = await findRoomByName(newName);
   if (existingRoomWithName && existingRoomWithName.id !== id) {
     return { error: 'Ya existe otra sala con este nuevo nombre.' };
   }
@@ -57,7 +57,7 @@ export function updateRoomDB(id: string, newName: string): Room | { error: strin
   return roomsDB[roomIndex];
 }
 
-export function deleteRoomDB(id: string): boolean {
+export async function deleteRoomDB(id: string): Promise<boolean> {
   const initialLength = roomsDB.length;
   roomsDB = roomsDB.filter(room => room.id !== id);
   // Note: In a real app, check if the room is in use by shifts before deleting,
@@ -65,3 +65,4 @@ export function deleteRoomDB(id: string): boolean {
   // For this mock, shifts will retain the area name as a string.
   return roomsDB.length < initialLength;
 }
+

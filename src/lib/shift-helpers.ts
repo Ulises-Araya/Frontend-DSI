@@ -157,19 +157,19 @@ export function cancelShiftDB(shiftId: string): Shift | { error: string } {
 
 export function updateShiftDetailsDB(
   shiftId: string, 
-  data: Pick<Shift, 'date' | 'startTime' | 'endTime' | 'notes' | 'area'>
+  data: Pick<Shift, 'date' | 'startTime' | 'endTime' | 'theme' | 'notes' | 'area'>
 ): Shift | { error: string } {
   const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
   if (shiftIndex === -1) return { error: 'Turno no encontrado.' };
 
   const currentShift = shiftsDB[shiftIndex];
   
-  // Theme, invitedUserDnis, and participantCount are preserved from currentShift
   shiftsDB[shiftIndex] = {
-    ...currentShift, // This carries over creatorId, creatorDni, creatorFullName, status, theme, invitedUserDnis, participantCount
+    ...currentShift,
     date: data.date,
     startTime: data.startTime,
     endTime: data.endTime,
+    theme: data.theme,
     notes: data.notes,
     area: data.area,
   };

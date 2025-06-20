@@ -24,10 +24,9 @@ const UpdateShiftFormSchema = z.object({
   date: z.date({ required_error: "Fecha es requerida." }),
   startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato HH:MM requerido"),
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato HH:MM requerido"),
-  theme: z.string(), // Theme will be displayed but not part of form submission for edit
+  theme: z.string().min(3, "Temática debe tener al menos 3 caracteres"),
   notes: z.string().optional(),
   area: z.string().min(3, "Área debe tener al menos 3 caracteres"),
-  // invitedUserDnis is removed - not editable
 }).refine(data => {
     const [startH, startM] = data.startTime.split(':').map(Number);
     const [endH, endM] = data.endTime.split(':').map(Number);
@@ -51,10 +50,9 @@ export function EditShiftForm({ shift, onShiftUpdated, setOpen }: EditShiftFormP
       date: parseISO(shift.date), 
       startTime: shift.startTime,
       endTime: shift.endTime,
-      theme: shift.theme, // Pre-fill theme
+      theme: shift.theme,
       notes: shift.notes || "",
       area: shift.area,
-      // invitedUserDnis not included here
     },
   });
 
@@ -81,10 +79,9 @@ export function EditShiftForm({ shift, onShiftUpdated, setOpen }: EditShiftFormP
     formData.append("date", format(values.date, "yyyy-MM-dd"));
     formData.append("startTime", values.startTime);
     formData.append("endTime", values.endTime);
-    // formData.append("theme", values.theme); // Theme is not sent for update
+    formData.append("theme", values.theme); 
     if (values.notes) formData.append("notes", values.notes);
     formData.append("area", values.area);
-    // invitedUserDnis is not sent
     
     startTransition(() => {
       formAction(formData);
@@ -138,9 +135,10 @@ export function EditShiftForm({ shift, onShiftUpdated, setOpen }: EditShiftFormP
         </div>
 
         <div>
-          <Label htmlFor="theme">Temática (No editable)</Label>
-          <Input id="theme" {...form.register("theme")} className="mt-1 bg-muted/50 cursor-not-allowed" disabled />
-          {/* Errors for theme are not relevant here as it's not submitted */}
+          <Label htmlFor="theme">Temática</Label>
+          <Input id="theme" {...form.register("theme")} placeholder="Ej: Consulta de Sintaxis" className="mt-1"/>
+          {form.formState.errors.theme && <p className="text-sm text-destructive mt-1">{form.formState.errors.theme.message}</p>}
+           {state?.errors?.theme && <p className="text-sm text-destructive mt-1">{state.errors.theme[0]}</p>}
         </div>
 
         <div>
@@ -150,8 +148,6 @@ export function EditShiftForm({ shift, onShiftUpdated, setOpen }: EditShiftFormP
           {state?.errors?.area && <p className="text-sm text-destructive mt-1">{state.errors.area[0]}</p>}
         </div>
         
-        {/* InvitedUserDnis section is removed */}
-
         <div>
           <Label htmlFor="notes">Observaciones (Opcional)</Label>
           <Textarea id="notes" {...form.register("notes")} placeholder="Notas adicionales..." className="mt-1"/>

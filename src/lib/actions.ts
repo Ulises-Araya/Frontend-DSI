@@ -59,14 +59,10 @@ const UpdateShiftSchema = z.object({
   date: z.string().min(1, "Fecha es requerida"), 
   startTime: z.string().min(1, "Hora de inicio es requerida"),
   endTime: z.string().min(1, "Hora de fin es requerida"),
-  // theme: z.string().min(3, "Temática debe tener al menos 3 caracteres"), // Theme is not editable
+  theme: z.string().min(3, "Temática debe tener al menos 3 caracteres"),
   notes: z.string().optional(),
   area: z.string().min(3, "Área debe tener al menos 3 caracteres"),
-  // invitedUserDnis: z.string().optional().refine(...) // Invited users are not editable
 }).refine(data => {
-    // Time validation logic if needed, ensure this doesn't break
-    // For example, if startTime and endTime are always present in the form data for validation.
-    // If startTime and endTime are not part of this schema for some reason, adjust validation.
     const [startH, startM] = data.startTime.split(':').map(Number);
     const [endH, endM] = data.endTime.split(':').map(Number);
     return (startH * 60 + startM) < (endH * 60 + endM);
@@ -341,9 +337,9 @@ export async function updateShift(prevState: ActionResponse | null, formData: Fo
     date: editableData.date,
     startTime: editableData.startTime,
     endTime: editableData.endTime,
+    theme: editableData.theme,
     notes: editableData.notes,
     area: editableData.area,
-    // theme and invitedUserDnis are NOT passed here, they are preserved by updateShiftDetailsDB
   });
 
   if ('error' in result) {

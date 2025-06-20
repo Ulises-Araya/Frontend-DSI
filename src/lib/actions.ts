@@ -156,12 +156,16 @@ async function fetchUserDetailsById(userId: string, token: string): Promise<User
         return null;
     }
     const backendUser = await response.json();
+    
+    // FIX: Map backend role 'usuario' to frontend role 'user'
+    const frontendRole = backendUser.rol === 'usuario' ? 'user' : backendUser.rol;
+
     return {
       id: backendUser.id.toString(),
       dni: backendUser.dni,
       fullName: backendUser.nombre,
       email: backendUser.email,
-      role: backendUser.rol as UserRole,
+      role: frontendRole as UserRole,
       profilePictureUrl: null, 
     };
   } catch (error) {
@@ -193,8 +197,7 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
     const loginData = await loginResponse.json();
 
     if (!loginResponse.ok) {
-      errorMessage = loginData.error || 'Error al iniciar sesión desde el backend.';
-      // TODO: Consider mapping specific backend errors to frontend fieldErrors if loginData provides them
+      errorMessage = loginData.error || 'Credenciales inválidas o error del servidor.';
     } else {
       const userId = loginData.id?.toString();
       const token = loginData.token;
@@ -202,7 +205,6 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
       if (!userId || !token) {
         errorMessage = 'Respuesta de login inválida desde el backend (faltan ID o token).';
       } else {
-        // Successfully authenticated with backend, now fetch full user details
         const userDetails = await fetchUserDetailsById(userId, token);
         if (userDetails) {
           sessionData = {
@@ -212,7 +214,6 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
             userDni: userDetails.dni,
           };
         } else {
-          // Login was successful, but couldn't fetch user details. This is a problem.
           errorMessage = 'Login exitoso pero no se pudieron obtener detalles completos del usuario.';
         }
       }
@@ -221,37 +222,35 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
     console.error('Error en la comunicación con el backend durante el login:', error);
     errorMessage = 'Error de conexión con el servidor de autenticación.';
     if (error.cause?.code === 'ECONNREFUSED') {
-        errorMessage = `No se pudo conectar a ${BACKEND_BASE_URL}. Asegúrate de que el servidor backend esté corriendo y la URL sea correcta.`;
+        errorMessage = `No se pudo conectar a ${BACKEND_BASE_URL}. Asegúrate de que el servidor backend esté corriendo.`;
     }
   }
 
-  // If there was an error at any point, or sessionData couldn't be fully populated
   if (errorMessage || !sessionData || !sessionData.userRole) {
-    if (globalThis.mockSession) { // Clear any partial global session state
+    if (globalThis.mockSession) {
         globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null, token: null };
     }
     return { 
       type: 'error', 
-      message: errorMessage || (sessionData && !sessionData.userRole ? 'No se pudo determinar el rol del usuario.' : 'Error desconocido durante el login.'), 
+      message: errorMessage || 'Error desconocido durante el login.', 
       errors: fieldErrors 
     };
   }
 
-  // If all successful, update global session state and redirect
   if (globalThis.mockSession) {
     globalThis.mockSession.currentUserId = sessionData.userId;
     globalThis.mockSession.token = sessionData.token;
-    globalThis.mockSession.currentUserRole = sessionData.userRole; // userRole is guaranteed non-null here
+    globalThis.mockSession.currentUserRole = sessionData.userRole;
     globalThis.mockSession.currentUserDni = sessionData.userDni;
   }
 
   if (sessionData.userRole === 'admin') {
+    console.log('Login successful for role: admin. Redirecting to /dashboard/admin');
     redirect('/dashboard/admin');
   } else if (sessionData.userRole === 'user') {
+    console.log('Login successful for role: user. Redirecting to /dashboard/user');
     redirect('/dashboard/user');
   } else {
-    // This case should ideally not be reached if userRole is validated above.
-    // Clean up session just in case.
     if (globalThis.mockSession) {
         globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null, token: null };
     }
@@ -268,10 +267,10 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
   const { fullName, email, dni, password } = validatedFields.data;
 
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/usuarios`, { // Tu backend usa POST /usuarios (no /api/usuarios/register)
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre: fullName, email, dni, password, rol: 'usuario' }), // rol por defecto
+      body: JSON.stringify({ nombre: fullName, email, dni, password, rol: 'usuario' }),
     });
     const data = await response.json();
 
@@ -280,7 +279,7 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
       if (data.error && typeof data.error === 'string') {
         if (data.error.toLowerCase().includes('dni')) fieldErrors.dni = [data.error];
         else if (data.error.toLowerCase().includes('email')) fieldErrors.email = [data.error];
-        else fieldErrors.confirmPassword = [data.error]; // Contraseña o error general
+        else fieldErrors.confirmPassword = [data.error]; 
       }
       return { type: 'error', message: data.error || 'Error al registrar desde el backend.', errors: fieldErrors };
     }
@@ -477,14 +476,8 @@ export async function changeUserPassword(prevState: ActionResponse | null, formD
   const { currentPassword, newPassword } = validatedFields.data;
 
   try {
-    // El backend de ejemplo no tiene un endpoint para verificar currentPassword antes de cambiar.
-    // Directamente se intenta actualizar la contraseña del usuario con la nueva.
-    // Si el backend necesitara verificar la currentPassword, se debería enviar y manejar allí.
     const backendPayload = {
-        password: newPassword, // El backend espera el campo "password" para la nueva contraseña
-        // Si tu backend SÍ verifica la contraseña actual, necesitarías un campo como `currentPassword` aquí
-        // y que el backend lo use. Por ejemplo:
-        // currentPassword: currentPassword 
+        password: newPassword,
     };
 
     const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${user.id}`, {
@@ -493,15 +486,13 @@ export async function changeUserPassword(prevState: ActionResponse | null, formD
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${globalThis.mockSession.token}`,
         },
-        body: JSON.stringify(backendPayload), // Solo se envía la nueva contraseña.
+        body: JSON.stringify(backendPayload),
     });
 
     const responseData = await response.json();
 
     if (!response.ok) {
         const fieldErrors: Record<string, string[]> = {};
-        // Asumimos que si hay error, podría ser porque la contraseña actual (si el backend la verifica) es incorrecta.
-        // O simplemente el backend no pudo actualizar.
          if (responseData.error && typeof responseData.error === 'string' && responseData.error.toLowerCase().includes('contraseña actual incorrecta')) {
             fieldErrors.currentPassword = [responseData.error];
         }
@@ -522,14 +513,13 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
   if (!validatedFields.success) {
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
-  const { dni } = validatedFields.data; // El formulario actual solo pide DNI
+  const { dni } = validatedFields.data;
 
   try {
-    // El backend puede aceptar `dni` o `email`. Enviamos DNI.
     const response = await fetch(`${BACKEND_BASE_URL}/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dni }), // Envía DNI al backend
+      body: JSON.stringify({ dni }),
     });
     const data = await response.json();
 
@@ -537,7 +527,6 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
       return { type: 'error', message: data.error || 'Error al solicitar restablecimiento de contraseña.' };
     }
 
-    // Almacenar el token real del backend para la redirección
     if (data.resetToken) {
         globalThis.backendResetTokenInfo = { dni: dni, token: data.resetToken };
         console.log(`Notification (simulated): Password reset requested for DNI ${dni}. Real token from backend: ${data.resetToken}.`);

@@ -43,6 +43,7 @@ export function RoomsList({ rooms, onRoomChange }: RoomsListProps) {
   const [, startTransition] = useTransition();
 
   const handleEditClick = (room: Room) => {
+    // NOTE: Backend does not support editing rooms, so this will show a disabled form.
     setSelectedRoomToEdit(room);
     setIsEditRoomDialogOpen(true);
   };
@@ -55,15 +56,14 @@ export function RoomsList({ rooms, onRoomChange }: RoomsListProps) {
     });
   };
   
-  useState(() => {
+  useEffect(() => {
     if (deleteActionState?.type === 'success') {
         toast({ title: "Sala Eliminada", description: deleteActionState.message });
         onRoomChange();
     } else if (deleteActionState?.type === 'error') {
         toast({ variant: "destructive", title: "Error", description: deleteActionState.message });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[deleteActionState]);
+  },[deleteActionState, toast, onRoomChange]);
 
 
   if (!rooms || rooms.length === 0) {
@@ -82,6 +82,7 @@ export function RoomsList({ rooms, onRoomChange }: RoomsListProps) {
         <TableHeader>
           <TableRow>
             <TableHead className="font-headline text-foreground/90">Nombre de la Sala/Área</TableHead>
+            <TableHead className="font-headline text-foreground/90">Capacidad</TableHead>
             <TableHead className="text-right font-headline text-foreground/90 w-[150px]">Acciones</TableHead>
           </TableRow>
         </TableHeader>
@@ -89,6 +90,7 @@ export function RoomsList({ rooms, onRoomChange }: RoomsListProps) {
           {rooms.map((room) => (
             <TableRow key={room.id}>
               <TableCell className="font-medium text-foreground/80">{room.name}</TableCell>
+              <TableCell className="text-foreground/80">{room.capacity}</TableCell>
               <TableCell className="text-right">
                 <Button variant="ghost" size="icon" onClick={() => handleEditClick(room)} className="mr-2 group">
                   <Edit className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
@@ -105,7 +107,7 @@ export function RoomsList({ rooms, onRoomChange }: RoomsListProps) {
                     <AlertDialogHeader>
                       <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Esta acción eliminará la sala "{room.name}". Los turnos existentes que usen esta sala conservarán el nombre pero la sala no estará disponible para nuevas selecciones. Esta acción no se puede deshacer.
+                        Esta acción eliminará la sala "{room.name}" de forma permanente.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -140,3 +142,5 @@ export function RoomsList({ rooms, onRoomChange }: RoomsListProps) {
     </div>
   );
 }
+
+    

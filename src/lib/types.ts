@@ -13,6 +13,13 @@ export interface User {
 
 export type ShiftStatus = 'pending' | 'accepted' | 'cancelled';
 
+export interface ShiftInvitation {
+  id: string;
+  userId: string;
+  userDni: string;
+  status: 'pending' | 'accepted' | 'rejected';
+}
+
 export interface Shift {
   id: string;
   date: string; 
@@ -26,12 +33,14 @@ export interface Shift {
   creatorId: string;
   creatorDni?: string; 
   creatorFullName?: string;
-  invitedUserDnis: string[]; 
+  invitedUserDnis: string[];
+  invitations: ShiftInvitation[];
 }
 
 export interface Room {
   id: string;
   name: string;
+  capacity: number;
 }
 
 export interface ActionResponse {
@@ -51,14 +60,48 @@ export interface EditShiftFormProps {
   setOpen: (open: boolean) => void;
 }
 
+// Backend-specific types for mapping
+export interface BackendUser {
+  id: number;
+  dni: string;
+  nombre: string;
+  email: string;
+  rol: 'usuario' | 'admin';
+}
+
+export interface BackendRoom {
+  id: number;
+  nombre: string;
+  capacidad: number;
+}
+
+export interface BackendInvitation {
+  id: number;
+  id_turno: number;
+  id_usuario: number;
+  estado_invitacion: 'pendiente' | 'aceptado' | 'rechazado';
+  Usuario?: BackendUser;
+}
+
+export interface BackendShift {
+  id: number;
+  fecha: string;
+  hora_inicio: string;
+  hora_fin: string;
+  tematica: string;
+  cantidad_integrantes: number;
+  estado: ShiftStatus;
+  observaciones: string;
+  id_usuario: number;
+  id_sala: number;
+  Usuario: BackendUser;
+  Sala: BackendRoom;
+  InvitadosTurnos: BackendInvitation[];
+}
+
+
 declare global {
-  // eslint-disable-next-line no-var
-  // var mockPasswordResetTokens: Record<string, { token: string, expires: number }>; // Ya no se usa
-  // eslint-disable-next-line no-var
-  // var mockLastGeneratedToken: { dni: string; token: string } | null; // Reemplazado por backendResetTokenInfo
-  // eslint-disable-next-line no-var
-  var backendResetTokenInfo: { dni: string; token: string } | null; // Para pasar el token real del backend a la UI
-  // eslint-disable-next-line no-var
+  var backendResetTokenInfo: { dni: string; token: string } | null;
   var mockSession: { 
     currentUserId: string | null; 
     currentUserRole: UserRole | null; 
@@ -66,3 +109,5 @@ declare global {
     token?: string | null; 
   } | undefined;
 }
+
+    

@@ -138,7 +138,7 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
     formData.append("endTime", values.endTime);
     formData.append("theme", values.theme);
     if (values.notes) formData.append("notes", values.notes);
-    formData.append("area", values.area); // area is now from Select
+    formData.append("area", values.area); // area is now the sala ID
     
     const dnisAsString = values.invitedUserDnis.map(item => item.value).join(',');
     if (dnisAsString) {
@@ -214,7 +214,7 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
                 </SelectTrigger>
                 <SelectContent>
                     {availableRooms.length > 0 ? availableRooms.map(room => (
-                        <SelectItem key={room.id} value={room.name}>{room.name}</SelectItem>
+                        <SelectItem key={room.id} value={room.id}>{room.name}</SelectItem>
                     )) : (
                         <SelectItem value="no-rooms" disabled>No hay salas disponibles</SelectItem>
                     )}
@@ -296,3 +296,5 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
     </ScrollArea>
   );
 }
+
+    

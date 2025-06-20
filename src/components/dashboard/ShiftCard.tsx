@@ -5,7 +5,7 @@ import type { Shift, ShiftStatus, UserRole, Room } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, Clock, Users, Edit, UserCircle, MapPin, MessageSquare, CheckCircle, XCircle, UserPlus, LogOut, Trash2 } from 'lucide-react';
+import { CalendarDays, Clock, Users, Edit, UserCircle, MapPin, MessageSquare, CheckCircle, XCircle, UserPlus, LogOut, Trash2, RefreshCw } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -62,8 +62,8 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
     if (newStatus === shift.status) return;
     setIsUpdatingStatus(true);
     const result = await updateShiftStatus(shift.id, newStatus);
-    if (result.type === 'success' && result.shift) {
-      toast({ title: "Estado Actualizado", description: `El turno "${shift.theme}" ahora está ${newStatus}.` });
+    if (result.type === 'success') {
+      toast({ title: "Estado Actualizado", description: `El turno "${shift.theme}" ahora está ${status}.` });
       if (onShiftUpdate) onShiftUpdate();
     } else {
       toast({ variant: "destructive", title: "Error", description: result.message || "No se pudo actualizar el estado." });
@@ -72,8 +72,14 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
   };
 
   const handleInvitationResponse = (response: 'accept' | 'reject') => {
+    const currentUserInvitation = shift.invitations.find(inv => inv.userDni === currentUserDni);
+    if (!currentUserInvitation) {
+        toast({ variant: "destructive", title: "Error", description: "No se encontró tu invitación para este turno." });
+        return;
+    }
+
     const formData = new FormData();
-    formData.append('shiftId', shift.id);
+    formData.append('invitationId', currentUserInvitation.id);
     formData.append('response', response);
     startTransition(() => {
       invitationFormAction(formData);
@@ -130,7 +136,7 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
   };
 
   const isCreator = shift.creatorId === currentUserId;
-  const isInvited = shift.invitedUserDnis.includes(currentUserDni) && !isCreator;
+  const isInvited = shift.invitations.some(inv => inv.userDni === currentUserDni);
   
   const canUserEditShift = 
     isCreator && 
@@ -327,3 +333,4 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
   );
 }
 
+    

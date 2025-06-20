@@ -9,14 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { updateShiftDetails } from "@/lib/actions"; // Changed from updateShift
+import { updateShiftDetails } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { Calendar as CalendarIcon, Save, Tent } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format, parseISO } from "date-fns";
 import { es } from 'date-fns/locale';
-import type { EditShiftFormProps, Room } from "@/lib/types";
+import type { EditShiftFormProps } from "@/lib/types";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -41,9 +41,11 @@ const UpdateShiftFormSchema = z.object({
 type UpdateShiftFormValues = z.infer<typeof UpdateShiftFormSchema>;
 
 export function EditShiftForm({ shift, availableRooms, onShiftUpdated, setOpen }: EditShiftFormProps) {
-  const [state, formAction, isActionPending] = useActionState(updateShiftDetails, null); // Changed from updateShift
+  const [state, formAction, isActionPending] = useActionState(updateShiftDetails, null);
   const [, startTransition] = useTransition();
   const { toast } = useToast();
+  
+  const originalRoom = availableRooms.find(r => r.name === shift.area);
 
   const form = useForm<UpdateShiftFormValues>({
     resolver: zodResolver(UpdateShiftFormSchema),
@@ -54,12 +56,12 @@ export function EditShiftForm({ shift, availableRooms, onShiftUpdated, setOpen }
       endTime: shift.endTime,
       theme: shift.theme,
       notes: shift.notes || "",
-      area: shift.area,
+      area: originalRoom?.id,
     },
   });
 
   useEffect(() => {
-    // Reset form if shift prop changes (e.g. opening dialog for different shift)
+    const originalRoom = availableRooms.find(r => r.name === shift.area);
     form.reset({
       shiftId: shift.id,
       date: parseISO(shift.date),
@@ -67,9 +69,9 @@ export function EditShiftForm({ shift, availableRooms, onShiftUpdated, setOpen }
       endTime: shift.endTime,
       theme: shift.theme,
       notes: shift.notes || "",
-      area: shift.area,
+      area: originalRoom?.id,
     });
-  }, [shift, form]);
+  }, [shift, availableRooms, form]);
 
   useEffect(() => {
     if (state?.type === 'error') {
@@ -96,7 +98,7 @@ export function EditShiftForm({ shift, availableRooms, onShiftUpdated, setOpen }
     formData.append("endTime", values.endTime);
     formData.append("theme", values.theme); 
     if (values.notes) formData.append("notes", values.notes);
-    formData.append("area", values.area); // Area is now from Select
+    formData.append("area", values.area); // Area is now the sala ID
     
     startTransition(() => {
       formAction(formData);
@@ -168,7 +170,7 @@ export function EditShiftForm({ shift, availableRooms, onShiftUpdated, setOpen }
                 </SelectTrigger>
                 <SelectContent>
                     {availableRooms && availableRooms.length > 0 ? availableRooms.map(room => (
-                        <SelectItem key={room.id} value={room.name}>{room.name}</SelectItem>
+                        <SelectItem key={room.id} value={room.id}>{room.name}</SelectItem>
                     )) : (
                         <SelectItem value="no-rooms" disabled>No hay salas configuradas</SelectItem>
                     )}
@@ -200,3 +202,5 @@ export function EditShiftForm({ shift, availableRooms, onShiftUpdated, setOpen }
     </ScrollArea>
   );
 }
+
+    

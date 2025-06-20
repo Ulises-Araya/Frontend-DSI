@@ -19,55 +19,59 @@ import {
   DialogClose
 } from '@/components/ui/dialog';
 import { useActionState, useTransition } from "react";
-import { addManagedRoom, updateManagedRoom } from '@/lib/actions';
+import { addManagedRoom } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 import { Save, PlusCircle } from 'lucide-react';
 
-const RoomNameSchema = z.object({
+const RoomFormSchema = z.object({
   name: z.string().min(3, "Nombre debe tener al menos 3 caracteres.").max(50, "Nombre no puede exceder los 50 caracteres."),
+  capacity: z.coerce.number().int().min(1, "La capacidad debe ser al menos 1."),
 });
-type RoomFormValues = z.infer<typeof RoomNameSchema>;
+type RoomFormValues = z.infer<typeof RoomFormSchema>;
 
 interface RoomFormDialogProps {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
-  room?: Room | null; // If provided, it's an edit operation
+  room?: Room | null; // room prop is kept for potential future edit functionality
   onRoomSaved: () => void;
 }
 
 export function RoomFormDialog({ isOpen, setIsOpen, room, onRoomSaved }: RoomFormDialogProps) {
   const isEditing = !!room;
+  // NOTE: Backend does not support updating rooms. This form is for adding only.
+  // The 'updateManagedRoom' action has been removed.
   const [actionState, formAction, isActionPending] = useActionState<ActionResponse | null, FormData>(
-    isEditing ? updateManagedRoom : addManagedRoom,
+    addManagedRoom,
     null
   );
   const { toast } = useToast();
   const [, startTransition] = useTransition();
 
   const form = useForm<RoomFormValues>({
-    resolver: zodResolver(RoomNameSchema),
+    resolver: zodResolver(RoomFormSchema),
     defaultValues: {
       name: room?.name || '',
+      capacity: room?.capacity || 10,
     },
   });
 
   useEffect(() => {
-    if (room) {
-      form.reset({ name: room.name });
+    if (room && isEditing) {
+      form.reset({ name: room.name, capacity: room.capacity });
     } else {
-      form.reset({ name: '' });
+      form.reset({ name: '', capacity: 10 });
     }
-  }, [room, form, isOpen]); // Reset form when dialog opens or room changes
+  }, [room, form, isOpen, isEditing]);
 
   useEffect(() => {
     if (actionState?.type === 'success') {
       toast({
-        title: isEditing ? "Sala Actualizada" : "Sala Agregada",
+        title: "Sala Agregada",
         description: actionState.message,
       });
       onRoomSaved();
       setIsOpen(false);
-      form.reset({name: ''}); // Reset form for next use
+      form.reset({ name: '', capacity: 10 });
     } else if (actionState?.type === 'error') {
       toast({
         variant: "destructive",
@@ -77,15 +81,21 @@ export function RoomFormDialog({ isOpen, setIsOpen, room, onRoomSaved }: RoomFor
       if (actionState.errors?.name) {
         form.setError("name", { type: "server", message: actionState.errors.name[0] });
       }
+      if (actionState.errors?.capacity) {
+        form.setError("capacity", { type: "server", message: actionState.errors.capacity[0] });
+      }
     }
-  }, [actionState, toast, onRoomSaved, setIsOpen, isEditing, form]);
+  }, [actionState, toast, onRoomSaved, setIsOpen, form]);
 
   const onSubmit = (values: RoomFormValues) => {
+    if (isEditing) {
+        toast({ variant: "destructive", title: "Funcionalidad no disponible", description: "El backend actual no permite editar salas." });
+        return;
+    }
     const formData = new FormData();
     formData.append('name', values.name);
-    if (isEditing && room) {
-      formData.append('id', room.id);
-    }
+    formData.append('capacity', values.capacity.toString());
+
     startTransition(() => {
         formAction(formData);
     });
@@ -96,10 +106,10 @@ export function RoomFormDialog({ isOpen, setIsOpen, room, onRoomSaved }: RoomFor
       <DialogContent className="sm:max-w-[425px] bg-card border-primary/30">
         <DialogHeader>
           <DialogTitle className="font-headline text-2xl text-primary">
-            {isEditing ? 'Editar Sala/Área' : 'Agregar Nueva Sala/Área'}
+            {isEditing ? 'Editar Sala/Área (No disponible)' : 'Agregar Nueva Sala/Área'}
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            {isEditing ? 'Modifica el nombre de la sala.' : 'Ingresa el nombre para la nueva sala o área.'}
+            {isEditing ? 'La edición de salas no está soportada por el backend actual.' : 'Ingresa los detalles para la nueva sala o área.'}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
@@ -112,12 +122,29 @@ export function RoomFormDialog({ isOpen, setIsOpen, room, onRoomSaved }: RoomFor
               {...form.register('name')}
               className="mt-1 bg-background/70 border-border focus:border-primary"
               placeholder="Ej: Laboratorio de Computación 1"
+              disabled={isEditing}
             />
             {form.formState.errors.name && (
               <p className="text-sm text-destructive mt-1">{form.formState.errors.name.message}</p>
             )}
-            {actionState?.errors?.name && <p className="text-sm text-destructive mt-1">{actionState.errors.name[0]}</p>}
-
+             {actionState?.errors?.name && <p className="text-sm text-destructive mt-1">{actionState.errors.name[0]}</p>}
+          </div>
+           <div>
+            <Label htmlFor="capacity" className="text-left text-foreground/80">
+              Capacidad
+            </Label>
+            <Input
+              id="capacity"
+              type="number"
+              {...form.register('capacity')}
+              className="mt-1 bg-background/70 border-border focus:border-primary"
+              placeholder="Ej: 25"
+              disabled={isEditing}
+            />
+            {form.formState.errors.capacity && (
+              <p className="text-sm text-destructive mt-1">{form.formState.errors.capacity.message}</p>
+            )}
+             {actionState?.errors?.capacity && <p className="text-sm text-destructive mt-1">{actionState.errors.capacity[0]}</p>}
           </div>
           <DialogFooter>
             <DialogClose asChild>
@@ -125,8 +152,8 @@ export function RoomFormDialog({ isOpen, setIsOpen, room, onRoomSaved }: RoomFor
                 Cancelar
               </Button>
             </DialogClose>
-            <Button type="submit" disabled={isActionPending} className="group">
-              {isActionPending ? (isEditing ? 'Guardando...' : 'Agregando...') : (isEditing ? 'Guardar Cambios' : 'Agregar Sala')}
+            <Button type="submit" disabled={isActionPending || isEditing} className="group">
+              {isActionPending ? 'Agregando...' : (isEditing ? 'Guardar Cambios' : 'Agregar Sala')}
               {isEditing ? <Save className="w-4 h-4 ml-2 opacity-70 group-hover:opacity-100" /> : <PlusCircle className="w-4 h-4 ml-2 opacity-70 group-hover:opacity-100" />}
             </Button>
           </DialogFooter>
@@ -135,3 +162,5 @@ export function RoomFormDialog({ isOpen, setIsOpen, room, onRoomSaved }: RoomFor
     </Dialog>
   );
 }
+
+    

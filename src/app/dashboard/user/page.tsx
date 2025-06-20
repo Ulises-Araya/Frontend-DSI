@@ -7,7 +7,7 @@ import { getUserShifts, getCurrentUserMock } from '@/lib/actions';
 import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { CreateShiftForm } from '@/components/dashboard/CreateShiftForm';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, CalendarClock, Archive, MailCheck, ArrowRight, BookOpen } from 'lucide-react';
+import { PlusCircle, CalendarClock, Archive, MailCheck, ArrowRight, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -21,11 +21,14 @@ import Image from 'next/image';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import Link from 'next/link';
 
+const ITEMS_PER_PAGE_HISTORY = 3;
+
 export default function UserDashboardPage() {
   const [user, setUser] = useState<User | null>(null);
   const [userCreatedShifts, setUserCreatedShifts] = useState<Shift[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [currentHistoryPage, setCurrentHistoryPage] = useState(1);
 
   async function loadData() {
     setIsLoading(true);
@@ -45,28 +48,36 @@ export default function UserDashboardPage() {
   
   const todayForCompare = useMemo(() => {
     const now = new Date();
-    // Create a new date object representing the start of today in UTC for consistent comparison
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
   }, []);
 
   const turnosActuales = useMemo(() => {
     return userCreatedShifts
       .filter(s => {
-        const shiftDate = new Date(s.date + 'T00:00:00Z'); // Shift date is already UTC midnight
+        const shiftDate = new Date(s.date + 'T00:00:00Z');
         return shiftDate >= todayForCompare && (s.status === 'pending' || s.status === 'accepted');
       })
-      .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Ascending
+      .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [userCreatedShifts, todayForCompare]);
 
   const historialDeTurnosCreados = useMemo(() => {
     return userCreatedShifts
       .filter(s => {
-        const shiftDate = new Date(s.date + 'T00:00:00Z'); // Shift date is already UTC midnight
+        const shiftDate = new Date(s.date + 'T00:00:00Z');
         return shiftDate < todayForCompare || s.status === 'cancelled';
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Descending
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [userCreatedShifts, todayForCompare]);
 
+  const totalHistoryPages = useMemo(() => {
+    return Math.ceil(historialDeTurnosCreados.length / ITEMS_PER_PAGE_HISTORY);
+  }, [historialDeTurnosCreados.length]);
+
+  const paginatedHistorialShifts = useMemo(() => {
+    const startIndex = (currentHistoryPage - 1) * ITEMS_PER_PAGE_HISTORY;
+    const endIndex = startIndex + ITEMS_PER_PAGE_HISTORY;
+    return historialDeTurnosCreados.slice(startIndex, endIndex);
+  }, [historialDeTurnosCreados, currentHistoryPage]);
 
   return (
     <div className="space-y-8">
@@ -88,7 +99,7 @@ export default function UserDashboardPage() {
                 <DialogTitle className="font-headline text-2xl text-primary">Nuevo Turno</DialogTitle>
                 <DialogDescription className="text-muted-foreground">Completa los detalles para agendar tu turno.</DialogDescription>
               </DialogHeader>
-              <CreateShiftForm onShiftCreated={() => { loadData(); setIsCreateModalOpen(false); }} setOpen={setIsCreateModalOpen} />
+              <CreateShiftForm onShiftCreated={() => { loadData(); setIsCreateModalOpen(false); setCurrentHistoryPage(1); }} setOpen={setIsCreateModalOpen} />
             </DialogContent>
           </Dialog>
           <Button variant="outline" asChild className="group w-full sm:w-auto">
@@ -132,7 +143,7 @@ export default function UserDashboardPage() {
                     currentUserRole="user" 
                     currentUserId={user.id}
                     currentUserDni={user.dni}
-                    onShiftUpdate={loadData} 
+                    onShiftUpdate={() => { loadData(); setCurrentHistoryPage(1);}} 
                   />
                 ))}
               </div>
@@ -151,19 +162,46 @@ export default function UserDashboardPage() {
               Historial de Turnos Creados
             </h2>
             {historialDeTurnosCreados.length > 0 ? (
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {historialDeTurnosCreados.map(shift => (
-                  user.dni &&
-                  <ShiftCard 
-                    key={shift.id} 
-                    shift={shift} 
-                    currentUserRole="user"
-                    currentUserId={user.id} 
-                    currentUserDni={user.dni}
-                    onShiftUpdate={loadData} 
-                  />
-                ))}
-              </div>
+              <>
+                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {paginatedHistorialShifts.map(shift => (
+                    user.dni &&
+                    <ShiftCard 
+                      key={shift.id} 
+                      shift={shift} 
+                      currentUserRole="user"
+                      currentUserId={user.id} 
+                      currentUserDni={user.dni}
+                      onShiftUpdate={() => { loadData(); setCurrentHistoryPage(1);}} 
+                    />
+                  ))}
+                </div>
+                {historialDeTurnosCreados.length > ITEMS_PER_PAGE_HISTORY && (
+                  <div className="flex justify-center items-center gap-4 mt-6">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setCurrentHistoryPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentHistoryPage === 1}
+                      aria-label="Página anterior del historial"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm text-muted-foreground">
+                      Página {currentHistoryPage} de {totalHistoryPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setCurrentHistoryPage(prev => Math.min(prev + 1, totalHistoryPages))}
+                      disabled={currentHistoryPage === totalHistoryPages}
+                      aria-label="Siguiente página del historial"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
                  <Image src="https://placehold.co/128x128.png" alt="Empty history illustration" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="archive box empty" />

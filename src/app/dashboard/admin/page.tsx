@@ -10,10 +10,12 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
-import { Search, FilterX, ShieldCheck, RefreshCw } from 'lucide-react';
+import { Search, FilterX, ShieldCheck, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
+
+const ITEMS_PER_PAGE_ADMIN = 6;
 
 export default function AdminDashboardPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -22,7 +24,8 @@ export default function AdminDashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<ShiftStatus | 'all'>('all');
-  const [filterArea, setFilterArea] = useState<string>('all'); // Changed to string, 'all' for no filter
+  const [filterArea, setFilterArea] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const { toast } = useToast();
 
   async function loadAdminData() {
@@ -53,6 +56,10 @@ export default function AdminDashboardPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus, filterArea]);
+
 
   const filteredShifts = useMemo(() => {
     return allShifts.filter(shift => {
@@ -63,17 +70,27 @@ export default function AdminDashboardPage() {
          shift.theme.toLowerCase().includes(searchTermLower));
       
       const matchesStatus = filterStatus === 'all' || shift.status === filterStatus;
-      // Ensure filterArea matches exact room name or 'all' for no filter
       const matchesArea = filterArea === 'all' || shift.area === filterArea;
 
       return matchesSearch && matchesStatus && matchesArea;
     });
   }, [allShifts, searchTerm, filterStatus, filterArea]);
+
+  const totalAdminPages = useMemo(() => {
+    return Math.ceil(filteredShifts.length / ITEMS_PER_PAGE_ADMIN);
+  }, [filteredShifts.length]);
+
+  const paginatedAdminShifts = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE_ADMIN;
+    const endIndex = startIndex + ITEMS_PER_PAGE_ADMIN;
+    return filteredShifts.slice(startIndex, endIndex);
+  }, [filteredShifts, currentPage]);
   
   const clearFilters = () => {
     setSearchTerm('');
     setFilterStatus('all');
     setFilterArea('all');
+    setCurrentPage(1);
   }
 
   return (
@@ -140,7 +157,7 @@ export default function AdminDashboardPage() {
 
       {isLoading || !currentUser ? (
          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3, 4, 5, 6].map(i => (
+          {[...Array(ITEMS_PER_PAGE_ADMIN)].map((_, i) => (
             <Card key={i} className="w-full shadow-lg">
               <CardHeader><Skeleton className="h-8 w-3/4" /></CardHeader>
               <CardContent className="space-y-3">
@@ -154,19 +171,46 @@ export default function AdminDashboardPage() {
           ))}
         </div>
       ) : filteredShifts.length > 0 ? (
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {filteredShifts.map(shift => (
-            currentUser && currentUser.dni && currentUser.id &&
-            <ShiftCard 
-              key={shift.id} 
-              shift={shift} 
-              currentUserRole="admin"
-              currentUserId={currentUser.id}
-              currentUserDni={currentUser.dni}
-              onShiftUpdate={loadAdminData}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {paginatedAdminShifts.map(shift => (
+              currentUser && currentUser.dni && currentUser.id &&
+              <ShiftCard 
+                key={shift.id} 
+                shift={shift} 
+                currentUserRole="admin"
+                currentUserId={currentUser.id}
+                currentUserDni={currentUser.dni}
+                onShiftUpdate={loadAdminData}
+              />
+            ))}
+          </div>
+          {filteredShifts.length > ITEMS_PER_PAGE_ADMIN && (
+            <div className="flex justify-center items-center gap-4 mt-8">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                aria-label="Página anterior"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Página {currentPage} de {totalAdminPages}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalAdminPages))}
+                disabled={currentPage === totalAdminPages}
+                aria-label="Siguiente página"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </>
       ) : (
         <div className="text-center py-12 bg-card/50 rounded-lg border border-dashed border-border">
           <Image src="https://placehold.co/128x128.png" alt="No results illustration" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="magnifying glass empty"/>

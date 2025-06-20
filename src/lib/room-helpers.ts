@@ -2,8 +2,8 @@
 'use server';
 import type { Room } from './types';
 
-// In-memory store for rooms
-export let roomsDB: Room[] = [
+// In-memory store for rooms - DO NOT EXPORT directly from a 'use server' file
+let roomsDB: Room[] = [
   { id: 'room1', name: 'Sala de Estudio 1' },
   { id: 'room2', name: 'Laboratorio A' },
   { id: 'room3', name: 'Aula Magna' },

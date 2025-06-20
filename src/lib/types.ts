@@ -1,3 +1,4 @@
+
 export type UserRole = 'user' | 'admin';
 
 export interface User {
@@ -5,7 +6,7 @@ export interface User {
   dni: string;
   fullName: string;
   email: string;
-  password?: string; // Should not be sent to client, but needed for registration/login server-side
+  password?: string; 
   role: UserRole;
   profilePictureUrl?: string | null;
 }
@@ -14,9 +15,9 @@ export type ShiftStatus = 'pending' | 'accepted' | 'cancelled';
 
 export interface Shift {
   id: string;
-  date: string; // YYYY-MM-DD
-  startTime: string; // HH:MM
-  endTime: string; // HH:MM
+  date: string; 
+  startTime: string; 
+  endTime: string; 
   theme: string;
   participantCount: number;
   notes?: string;
@@ -25,7 +26,7 @@ export interface Shift {
   creatorId: string;
   creatorDni?: string; 
   creatorFullName?: string;
-  invitedUserDnis: string[]; // List of DNIs of invited users
+  invitedUserDnis: string[]; 
 }
 
 export interface ActionResponse {
@@ -33,11 +34,18 @@ export interface ActionResponse {
   message: string;
   errors?: Record<string, string[] | undefined>;
   shift?: Shift;
+  user?: User;
 }
 
-// Props for the EditShiftForm
 export interface EditShiftFormProps {
   shift: Shift;
   onShiftUpdated: () => void;
   setOpen: (open: boolean) => void;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var mockPasswordResetTokens: Record<string, { token: string, expires: number }>;
+  // eslint-disable-next-line no-var
+  var mockLastGeneratedToken: { dni: string; token: string } | null;
 }

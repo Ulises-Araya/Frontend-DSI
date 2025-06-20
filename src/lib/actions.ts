@@ -9,7 +9,10 @@ import {
   findUserByEmail, 
   usersDB,
   updateUserDetails,
-  updateUserPassword as updateUserPasswordHelper
+  updateUserPassword as updateUserPasswordHelper,
+  generateAndStoreMockResetToken,
+  verifyAndConsumeMockResetToken,
+  updateUserPasswordByDni
 } from './auth-helpers';
 import { 
   addShift as addShiftDB, 
@@ -25,7 +28,7 @@ import {
 import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse } from './types';
 
 interface ActionResponse extends BaseActionResponse {
-  user?: User; // Add user to ActionResponse for profile updates
+  user?: User; 
 }
 
 
@@ -92,7 +95,7 @@ const UpdateProfileSchema = z.object({
       file => !file || ACCEPTED_IMAGE_TYPES.includes(file.type),
       "Solo se aceptan formatos .jpg, .jpeg, .png y .webp."
     ),
-  removeProfilePicture: z.string().optional(), // 'true' or undefined
+  removeProfilePicture: z.string().optional(), 
 });
 
 
@@ -102,6 +105,20 @@ const ChangePasswordSchema = z.object({
   confirmNewPassword: z.string(),
 }).refine(data => data.newPassword === data.confirmNewPassword, {
   message: "Las nuevas contraseñas no coinciden.",
+  path: ["confirmNewPassword"],
+});
+
+const ForgotPasswordSchema = z.object({
+  dni: z.string().min(1, "DNI es requerido"),
+});
+
+const ResetPasswordSchema = z.object({
+  dni: z.string().min(1, "DNI es requerido"),
+  token: z.string().min(1, "Token es requerido"),
+  newPassword: z.string().min(6, "Nueva contraseña debe tener al menos 6 caracteres."),
+  confirmNewPassword: z.string(),
+}).refine(data => data.newPassword === data.confirmNewPassword, {
+  message: "Las contraseñas no coinciden.",
   path: ["confirmNewPassword"],
 });
 
@@ -115,11 +132,23 @@ interface MockSession {
 declare global {
   // eslint-disable-next-line no-var
   var mockSession: MockSession | undefined;
+  // eslint-disable-next-line no-var
+  var mockPasswordResetTokens: Record<string, { token: string, expires: number }> | undefined;
+  // eslint-disable-next-line no-var
+  var mockLastGeneratedToken: { dni: string; token: string } | null | undefined;
+
 }
 
 if (globalThis.mockSession === undefined) {
   globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null };
 }
+if (globalThis.mockPasswordResetTokens === undefined) {
+  globalThis.mockPasswordResetTokens = {};
+}
+if (globalThis.mockLastGeneratedToken === undefined) {
+  globalThis.mockLastGeneratedToken = null;
+}
+
 
 export async function loginUser(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const validatedFields = LoginSchema.safeParse(Object.fromEntries(formData.entries()));
@@ -287,10 +316,8 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
   if (removeProfilePicture === 'true') {
     profilePictureUrlToUpdate = null;
   } else if (profilePicture) {
-    // In a real app, upload the file and get a URL. For mock, use a placeholder.
-    profilePictureUrlToUpdate = `https://placehold.co/100x100/7FBC8F/FFFFFF.png?text=✓&unique=${Date.now()}`; // Added unique to force refresh
+    profilePictureUrlToUpdate = `https://placehold.co/100x100/7FBC8F/FFFFFF.png?text=✓&unique=${Date.now()}`; 
   }
-  // If profilePictureUrlToUpdate remains undefined, it means no change to profile picture.
 
   const updatedUser = updateUserDetails(user.id, { 
     fullName, 
@@ -344,7 +371,7 @@ export async function updateShift(prevState: ActionResponse | null, formData: Fo
   if (user.role !== 'admin' && shiftToUpdate.creatorId !== user.id) {
     return { type: 'error', message: 'No tienes permiso para editar este turno.' };
   }
-   // Admins can edit cancelled shifts. Users can only edit if pending/accepted.
+ 
   if (user.role === 'user' && shiftToUpdate.creatorId === user.id && shiftToUpdate.status === 'cancelled') {
     return { type: 'error', message: 'No puedes editar un turno cancelado.' };
   }
@@ -375,7 +402,6 @@ export async function cancelShift(prevState: ActionResponse | null, formData: Fo
   if (!shiftToCancel) return { type: 'error', message: 'Turno no encontrado.' };
 
   if (user.role === 'admin') {
-     // Admins use status change, this action is for user-initiated cancellations.
      return { type: 'error', message: 'Los administradores deben usar el cambio de estado para cancelar.' };
   }
 
@@ -392,4 +418,46 @@ export async function cancelShift(prevState: ActionResponse | null, formData: Fo
     return { type: 'success', message: 'Turno cancelado exitosamente.', shift: cancelledShift };
   }
   return { type: 'error', message: 'Error al cancelar el turno.' };
+}
+
+export async function requestPasswordReset(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const validatedFields = ForgotPasswordSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!validatedFields.success) {
+    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
+  }
+  const { dni } = validatedFields.data;
+  const user = findUserByDni(dni);
+
+  if (!user) {
+    // Return a generic message even if user not found to avoid account enumeration
+    return { type: 'success', message: "Si existe una cuenta con este DNI, se ha enviado un (simulado) enlace para restablecer la contraseña." };
+  }
+
+  const token = generateAndStoreMockResetToken(dni);
+  if (!token) {
+    return { type: 'error', message: "No se pudo generar el token de restablecimiento. Inténtalo de nuevo." };
+  }
+  
+  // For mock purposes, store the token to be used by the form to redirect
+  globalThis.mockLastGeneratedToken = { dni: user.dni, token };
+
+  return { type: 'success', message: "Si existe una cuenta con este DNI, se ha enviado un (simulado) enlace para restablecer la contraseña." };
+}
+
+export async function resetPasswordWithToken(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const validatedFields = ResetPasswordSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!validatedFields.success) {
+    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
+  }
+  const { dni, token, newPassword } = validatedFields.data;
+
+  if (!verifyAndConsumeMockResetToken(dni, token)) {
+    return { type: 'error', message: "Token inválido o expirado. Por favor, solicita un nuevo restablecimiento de contraseña.", errors: { token: ["Token inválido o expirado."] }};
+  }
+
+  const success = updateUserPasswordByDni(dni, newPassword);
+  if (success) {
+    redirect('/login?reset=success'); // Add query param to show toast on login page if needed
+  }
+  return { type: 'error', message: "No se pudo restablecer la contraseña. Inténtalo de nuevo." };
 }

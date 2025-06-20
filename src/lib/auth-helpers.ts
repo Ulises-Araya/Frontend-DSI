@@ -7,6 +7,10 @@ export const usersDB: User[] = [
   { id: '2', dni: '12345678', fullName: 'Regular User', email: 'user@example.com', password: 'userpassword', role: 'user', profilePictureUrl: null },
 ];
 
+// In-memory store for mock password reset tokens
+// Record<dni, { token: string, expires: number }>
+globalThis.mockPasswordResetTokens = globalThis.mockPasswordResetTokens || {};
+
 export function findUserByDni(dni: string): User | undefined {
   return usersDB.find(user => user.dni === dni);
 }
@@ -53,5 +57,40 @@ export function updateUserPassword(userId: string, newPassword: string): boolean
 
   // In a real app, hash the password before storing
   usersDB[userIndex].password = newPassword;
+  return true;
+}
+
+// --- Password Reset Helpers ---
+
+export function generateAndStoreMockResetToken(dni: string): string | null {
+  const user = findUserByDni(dni);
+  if (!user) return null;
+
+  const token = `mocktoken-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+  const expires = Date.now() + 15 * 60 * 1000; // Token expires in 15 minutes
+
+  globalThis.mockPasswordResetTokens[dni] = { token, expires };
+  return token;
+}
+
+export function verifyAndConsumeMockResetToken(dni: string, token: string): boolean {
+  const storedEntry = globalThis.mockPasswordResetTokens[dni];
+  if (!storedEntry) return false;
+
+  if (storedEntry.token !== token) return false;
+  if (Date.now() > storedEntry.expires) {
+    delete globalThis.mockPasswordResetTokens[dni]; // Expired token
+    return false;
+  }
+
+  delete globalThis.mockPasswordResetTokens[dni]; // Consume token
+  return true;
+}
+
+export function updateUserPasswordByDni(dni: string, newPassword: string): boolean {
+  const userIndex = usersDB.findIndex(user => user.dni === dni);
+  if (userIndex === -1) return false;
+
+  usersDB[userIndex].password = newPassword; // In a real app, hash this
   return true;
 }

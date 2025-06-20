@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import type { Shift, User } from '@/lib/types';
-import { getUserShifts, getCurrentUserMock } from '@/lib/actions';
+import { getUserShifts, getCurrentUser } from '@/lib/actions'; // Cambiado
 import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
@@ -11,17 +11,25 @@ import Image from 'next/image';
 import { MailCheck, ArrowLeft, Inbox, ListChecks, CalendarX2 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { useRouter } from 'next/navigation'; // Importar useRouter
 
 export default function InvitedShiftsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [allInvitedShifts, setAllInvitedShifts] = useState<Shift[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter(); // Inicializar useRouter
 
   async function loadData() {
     setIsLoading(true);
-    const fetchedUser = await getCurrentUserMock();
+    const fetchedUser = await getCurrentUser();
+    if (!fetchedUser) {
+      router.push('/login'); // Redirigir si no hay usuario
+      setIsLoading(false);
+      return;
+    }
     setUser(fetchedUser);
     if (fetchedUser && fetchedUser.dni) {
+      // La lógica de getUserShifts sigue siendo local por ahora
       const fetchedShifts = await getUserShifts();
       const invites = fetchedShifts.filter(shift => 
         shift.invitedUserDnis.includes(fetchedUser.dni) && 
@@ -34,6 +42,7 @@ export default function InvitedShiftsPage() {
 
   useEffect(() => {
     loadData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pendingInvitations = allInvitedShifts.filter(s => s.status === 'pending');
@@ -47,7 +56,7 @@ export default function InvitedShiftsPage() {
           <MailCheck className="w-10 h-10 mr-3" />
           Mis Invitaciones
         </h1>
-        <Button variant="outline" asChild>
+        <Button variant="outline" asChild disabled={!user}>
           <Link href="/dashboard/user">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Volver a Mis Turnos Creados
@@ -55,7 +64,7 @@ export default function InvitedShiftsPage() {
         </Button>
       </div>
 
-      {isLoading ? (
+      {isLoading || !user ? ( // Verificar si el usuario está cargado
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3, 4, 5, 6].map(i => (
             <Card key={i} className="w-full shadow-lg">
@@ -79,7 +88,7 @@ export default function InvitedShiftsPage() {
             {pendingInvitations.length > 0 ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {pendingInvitations.map(shift => (
-                  user && user.dni &&
+                  user && user.dni && // Asegurar que user y user.dni existan
                   <ShiftCard 
                     key={shift.id} 
                     shift={shift} 
@@ -106,7 +115,7 @@ export default function InvitedShiftsPage() {
             {confirmedInvitations.length > 0 ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {confirmedInvitations.map(shift => (
-                  user && user.dni &&
+                  user && user.dni && // Asegurar que user y user.dni existan
                   <ShiftCard 
                     key={shift.id} 
                     shift={shift} 
@@ -133,7 +142,7 @@ export default function InvitedShiftsPage() {
             {cancelledByOrganizerInvitations.length > 0 ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {cancelledByOrganizerInvitations.map(shift => (
-                  user && user.dni &&
+                  user && user.dni && // Asegurar que user y user.dni existan
                   <ShiftCard 
                     key={shift.id} 
                     shift={shift} 

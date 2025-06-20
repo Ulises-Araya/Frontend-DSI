@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { logoutUser, getCurrentUserMock } from '@/lib/actions';
+import { logoutUser, getCurrentUser } from '@/lib/actions'; // Cambiado a getCurrentUser
 import { useEffect, useState } from 'react';
 import type { User } from '@/lib/types';
 import { LogOut, Settings, UserCircle, LayoutDashboard, MailCheck, Tent } from 'lucide-react';
@@ -25,28 +25,42 @@ export function DashboardHeader() {
 
   useEffect(() => {
     async function fetchUser() {
-      const currentUser = await getCurrentUserMock();
+      const currentUser = await getCurrentUser(); // Usar la nueva función que llama al backend
       setUser(currentUser);
       if (!currentUser) { 
-        router.push('/login');
+        // Si no hay usuario (ej. token expirado y logoutUser fue llamado desde getCurrentUser)
+        // la redirección ya debería haber ocurrido en logoutUser.
+        // Pero por si acaso, o si getCurrentUser solo retorna null sin redirigir en todos los casos:
+        if (router.pathname !== '/login') { // Evitar bucle si ya está en login
+            router.push('/login');
+        }
       }
     }
     fetchUser();
-  }, [router]);
+  }, [router]); // router como dependencia por si se usa dentro de fetchUser indirectamente
 
 
   useEffect(() => {
     const interval = setInterval(async () => {
-      const potentiallyUpdatedUser = await getCurrentUserMock();
-      if (JSON.stringify(user) !== JSON.stringify(potentiallyUpdatedUser)) {
-        setUser(potentiallyUpdatedUser);
+      // Solo refrescar si hay un usuario, para evitar llamadas innecesarias si no está logueado
+      if (globalThis.mockSession?.currentUserId && globalThis.mockSession?.token) {
+        const potentiallyUpdatedUser = await getCurrentUser();
+        // Compara el objeto usuario completo para ver si hay cambios
+        if (JSON.stringify(user) !== JSON.stringify(potentiallyUpdatedUser)) {
+          setUser(potentiallyUpdatedUser);
+        }
+      } else if (user) { // Si teníamos un usuario pero la sesión global ya no, significa que se deslogueó.
+        setUser(null);
+        if (router.pathname !== '/login') router.push('/login');
       }
-    }, 2000); 
+    }, 5000); // Aumentado a 5 segundos para no sobrecargar
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user, router]);
 
   const handleLogout = async () => {
     await logoutUser();
+    setUser(null); // Asegurar que el estado local se limpie inmediatamente
+    // la redirección ya ocurre dentro de logoutUser
   };
   
   const getInitials = (name: string = "") => {
@@ -72,7 +86,7 @@ export function DashboardHeader() {
         </Link>
         
         <div className="flex items-center space-x-3">
-          {user && (
+          {user ? ( // Solo mostrar si el usuario está cargado
              <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-9 w-9 rounded-full">
@@ -119,6 +133,8 @@ export function DashboardHeader() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          ) : (
+            <UserCircle className="h-8 w-8 text-muted-foreground animate-pulse" /> // Indicador de carga o no logueado
           )}
           <ThemeToggle />
         </div>

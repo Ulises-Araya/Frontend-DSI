@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import type { Room, User } from '@/lib/types';
-import { getCurrentUserMock, getManagedRooms } from '@/lib/actions';
+import { getCurrentUser, getManagedRooms } from '@/lib/actions'; // Cambiado
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Tent, ArrowLeft, RefreshCw } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { RoomsList } from './components/RoomsList';
 import { RoomFormDialog } from './components/RoomFormDialog';
 import { useToast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation'; // Importar useRouter
 
 export default function AdminRoomsPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -18,15 +19,26 @@ export default function AdminRoomsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAddRoomDialogOpen, setIsAddRoomDialogOpen] = useState(false);
   const { toast } = useToast();
+  const router = useRouter(); // Inicializar useRouter
 
   async function loadAdminData() {
     setIsLoading(true);
     try {
-      const [user, fetchedRooms] = await Promise.all([
-        getCurrentUserMock(),
-        getManagedRooms()
-      ]);
+      const user = await getCurrentUser();
+       if (!user) {
+        router.push('/login');
+        setIsLoading(false);
+        return;
+      }
+      if (user.role !== 'admin') {
+        router.push('/dashboard/user');
+        setIsLoading(false);
+        return;
+      }
       setCurrentUser(user);
+
+      // getManagedRooms sigue usando lógica local
+      const fetchedRooms = await getManagedRooms();
       setRooms(fetchedRooms);
     } catch (error) {
       console.error("Error loading admin room data:", error);
@@ -35,7 +47,7 @@ export default function AdminRoomsPage() {
         title: "Error",
         description: "No se pudo cargar la información de las salas.",
       });
-      setRooms([]); // Ensure rooms is an array on error
+      setRooms([]); 
     } finally {
       setIsLoading(false);
     }
@@ -43,10 +55,11 @@ export default function AdminRoomsPage() {
 
   useEffect(() => {
     loadAdminData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleRoomSaved = () => {
-    loadAdminData(); // Refresh the list after a room is added or updated
+    loadAdminData(); 
   };
 
   if (isLoading || !currentUser) {
@@ -68,6 +81,7 @@ export default function AdminRoomsPage() {
     );
   }
 
+  // Esta verificación es redundante si loadAdminData ya redirige, pero se deja como doble seguro.
   if (currentUser.role !== 'admin') {
     return <p className="text-center text-destructive">Acceso denegado. Esta sección es solo para administradores.</p>;
   }
@@ -90,7 +104,7 @@ export default function AdminRoomsPage() {
                 <PlusCircle className="w-5 h-5 mr-2 transition-transform group-hover:rotate-90" />
                 Agregar Sala
             </Button>
-             <Button onClick={loadAdminData} variant="outline" size="icon" aria-label="Refrescar salas">
+             <Button onClick={loadAdminData} variant="outline" size="icon" aria-label="Refrescar salas" disabled={isLoading}>
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </Button>
         </div>
@@ -102,7 +116,6 @@ export default function AdminRoomsPage() {
         isOpen={isAddRoomDialogOpen}
         setIsOpen={setIsAddRoomDialogOpen}
         onRoomSaved={handleRoomSaved}
-        // No room prop means it's for adding a new room
       />
     </div>
   );

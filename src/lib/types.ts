@@ -2,13 +2,13 @@
 export type UserRole = 'user' | 'admin';
 
 export interface User {
-  id: string;
+  id: string; // En el backend es INTEGER, pero se manejará como string en el frontend.
   dni: string;
-  fullName: string;
+  fullName: string; // Corresponde a 'nombre' en el backend
   email: string;
-  password?: string; 
-  role: UserRole;
-  profilePictureUrl?: string | null;
+  password?: string; // Solo para envío, no se almacena en frontend post-login
+  role: UserRole;     // Corresponde a 'rol' en el backend
+  profilePictureUrl?: string | null; // Frontend-only concept for now
 }
 
 export type ShiftStatus = 'pending' | 'accepted' | 'cancelled';
@@ -21,7 +21,7 @@ export interface Shift {
   theme: string;
   participantCount: number;
   notes?: string;
-  area: string; // This will now correspond to a managed Room's name
+  area: string; 
   status: ShiftStatus;
   creatorId: string;
   creatorDni?: string; 
@@ -39,7 +39,7 @@ export interface ActionResponse {
   message: string;
   errors?: Record<string, string[] | undefined>;
   shift?: Shift;
-  user?: User;
+  user?: User; // Puede contener datos del usuario actualizados o logueados
   room?: Room;
   rooms?: Room[];
 }
@@ -56,4 +56,11 @@ declare global {
   var mockPasswordResetTokens: Record<string, { token: string, expires: number }>;
   // eslint-disable-next-line no-var
   var mockLastGeneratedToken: { dni: string; token: string } | null;
+  // eslint-disable-next-line no-var
+  var mockSession: { 
+    currentUserId: string | null; 
+    currentUserRole: UserRole | null; 
+    currentUserDni: string | null;
+    token?: string | null; // Para almacenar el JWT
+  } | undefined;
 }

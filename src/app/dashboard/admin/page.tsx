@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import type { Shift, ShiftStatus, User, Room } from '@/lib/types';
-import { getAllShiftsAdmin, getCurrentUserMock, getManagedRooms } from '@/lib/actions';
+import { getAllShiftsAdmin, getCurrentUser, getManagedRooms } from '@/lib/actions'; // Cambiado
 import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,6 +14,7 @@ import { Search, FilterX, ShieldCheck, RefreshCw, ChevronLeft, ChevronRight } fr
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
+import { useRouter } from 'next/navigation'; // Importar useRouter
 
 const ITEMS_PER_PAGE_ADMIN = 6;
 
@@ -27,16 +28,28 @@ export default function AdminDashboardPage() {
   const [filterArea, setFilterArea] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const { toast } = useToast();
+  const router = useRouter(); // Inicializar useRouter
 
   async function loadAdminData() {
     setIsLoading(true);
     try {
-        const [user, fetchedShifts, fetchedRooms] = await Promise.all([
-        getCurrentUserMock(),
-        getAllShiftsAdmin(),
-        getManagedRooms()
-        ]);
+        const user = await getCurrentUser();
+        if (!user) {
+            router.push('/login');
+            setIsLoading(false);
+            return;
+        }
+        if (user.role !== 'admin') {
+            router.push('/dashboard/user'); // No es admin, redirigir
+            setIsLoading(false);
+            return;
+        }
         setCurrentUser(user);
+
+        const [fetchedShifts, fetchedRooms] = await Promise.all([
+            getAllShiftsAdmin(), // Esta sigue siendo local por ahora
+            getManagedRooms()    // Esta sigue siendo local por ahora
+        ]);
         setAllShifts(fetchedShifts);
         setAvailableRooms(fetchedRooms);
     } catch (error) {
@@ -100,7 +113,7 @@ export default function AdminDashboardPage() {
           <ShieldCheck className="w-10 h-10 mr-3" />
           Panel de Administración
         </h1>
-        <Button onClick={loadAdminData} variant="outline" size="icon" aria-label="Refrescar datos" disabled={isLoading}>
+        <Button onClick={loadAdminData} variant="outline" size="icon" aria-label="Refrescar datos" disabled={isLoading || !currentUser}>
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
         </Button>
       </div>
@@ -118,11 +131,12 @@ export default function AdminDashboardPage() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="bg-background/70"
+              disabled={!currentUser}
             />
           </div>
           <div className="space-y-1">
             <Label htmlFor="filterStatus" className="text-sm font-medium text-muted-foreground">Estado</Label>
-            <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as ShiftStatus | 'all')}>
+            <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as ShiftStatus | 'all')} disabled={!currentUser}>
               <SelectTrigger id="filterStatus" className="bg-background/70">
                 <SelectValue placeholder="Todos los estados" />
               </SelectTrigger>
@@ -136,7 +150,7 @@ export default function AdminDashboardPage() {
           </div>
           <div className="space-y-1">
             <Label htmlFor="filterArea" className="text-sm font-medium text-muted-foreground">Área</Label>
-             <Select value={filterArea} onValueChange={(value) => setFilterArea(value)}>
+             <Select value={filterArea} onValueChange={(value) => setFilterArea(value)} disabled={!currentUser || availableRooms.length === 0}>
               <SelectTrigger id="filterArea" className="bg-background/70">
                 <SelectValue placeholder="Todas las áreas" />
               </SelectTrigger>
@@ -148,7 +162,7 @@ export default function AdminDashboardPage() {
               </SelectContent>
             </Select>
           </div>
-          <Button onClick={clearFilters} variant="outline" className="w-full lg:w-auto group">
+          <Button onClick={clearFilters} variant="outline" className="w-full lg:w-auto group" disabled={!currentUser}>
             <FilterX className="w-4 h-4 mr-2 group-hover:text-destructive transition-colors" />
             Limpiar Filtros
           </Button>
@@ -174,7 +188,7 @@ export default function AdminDashboardPage() {
         <>
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {paginatedAdminShifts.map(shift => (
-              currentUser && currentUser.dni && currentUser.id &&
+              currentUser && currentUser.dni && currentUser.id && // Ya verificado arriba, pero por si acaso
               <ShiftCard 
                 key={shift.id} 
                 shift={shift} 

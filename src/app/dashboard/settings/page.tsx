@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import type { User } from '@/lib/types';
-import { getCurrentUserMock } from '@/lib/actions';
+import { getCurrentUser } from '@/lib/actions'; // Cambiado
 import { UpdateProfileForm } from '@/components/dashboard/settings/UpdateProfileForm';
 import { ChangePasswordForm } from '@/components/dashboard/settings/ChangePasswordForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,24 +12,39 @@ import { Settings as SettingsIcon, UserCog, KeyRound, ArrowLeft } from 'lucide-r
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // Importar useRouter
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter(); // Inicializar useRouter
 
   useEffect(() => {
     async function loadUser() {
       setIsLoading(true);
-      const fetchedUser = await getCurrentUserMock();
-      setUser(fetchedUser);
+      const fetchedUser = await getCurrentUser();
+      if (!fetchedUser) {
+        router.push('/login'); // Redirigir si no hay usuario
+      } else {
+        setUser(fetchedUser);
+      }
       setIsLoading(false);
     }
     loadUser();
-  }, []);
+  }, [router]);
 
   const handleProfileUpdate = (updatedUser: User) => {
-    setUser(updatedUser); // Update local state to reflect changes immediately
+    // La foto de perfil (profilePictureUrl) se gestiona localmente en el form y el header por ahora,
+    // ya que el backend provisto no la almacena. El `updatedUser` de la acción `updateUserProfile`
+    // contendrá los datos del backend (nombre, email) y el `profilePictureUrl` que ya tenía el usuario en el frontend.
+    setUser(prevUser => ({
+      ...(prevUser || {} as User), // Mantener datos existentes si prevUser es null
+      ...updatedUser, // Aplicar los datos actualizados del backend
+      // Asegurar que profilePictureUrl se mantiene si updatedUser no lo trae (porque backend no lo tiene)
+      profilePictureUrl: updatedUser.profilePictureUrl !== undefined ? updatedUser.profilePictureUrl : prevUser?.profilePictureUrl 
+    }));
   };
+
 
   if (isLoading) {
     return (
@@ -70,7 +85,8 @@ export default function SettingsPage() {
   }
 
   if (!user) {
-    return <p className="text-center text-muted-foreground">No se pudo cargar la información del usuario.</p>;
+    // Ya debería haber redirigido, pero como fallback:
+    return <p className="text-center text-muted-foreground">No se pudo cargar la información del usuario. Serás redirigido al login.</p>;
   }
 
   const dashboardLink = user.role === 'admin' ? '/dashboard/admin' : '/dashboard/user';

@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import type { Shift, User } from '@/lib/types';
-import { getUserShifts, getCurrentUserMock } from '@/lib/actions';
+import { getUserShifts, getCurrentUser } from '@/lib/actions'; // Cambiado
 import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { CreateShiftForm } from '@/components/dashboard/CreateShiftForm';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // Importar useRouter
 
 const ITEMS_PER_PAGE_HISTORY = 3;
 
@@ -29,21 +30,27 @@ export default function UserDashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [currentHistoryPage, setCurrentHistoryPage] = useState(1);
+  const router = useRouter(); // Inicializar useRouter
 
   async function loadData() {
     setIsLoading(true);
-    const fetchedUser = await getCurrentUserMock();
-    setUser(fetchedUser);
-    if (fetchedUser) {
-      const fetchedShifts = await getUserShifts(); 
-      const created = fetchedShifts.filter(shift => shift.creatorId === fetchedUser.id);
-      setUserCreatedShifts(created);
+    const fetchedUser = await getCurrentUser();
+    if (!fetchedUser) {
+      router.push('/login'); // Redirigir si no hay usuario
+      setIsLoading(false);
+      return;
     }
+    setUser(fetchedUser);
+    // La lógica de getUserShifts sigue siendo local por ahora
+    const fetchedShifts = await getUserShifts(); 
+    const created = fetchedShifts.filter(shift => shift.creatorId === fetchedUser.id);
+    setUserCreatedShifts(created);
     setIsLoading(false);
   }
 
   useEffect(() => {
     loadData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   const todayForCompare = useMemo(() => {
@@ -54,7 +61,7 @@ export default function UserDashboardPage() {
   const turnosActuales = useMemo(() => {
     return userCreatedShifts
       .filter(s => {
-        const shiftDate = new Date(s.date + 'T00:00:00Z');
+        const shiftDate = new Date(s.date + 'T00:00:00Z'); // Asegurar UTC para comparación
         return shiftDate >= todayForCompare && (s.status === 'pending' || s.status === 'accepted');
       })
       .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -63,7 +70,7 @@ export default function UserDashboardPage() {
   const historialDeTurnosCreados = useMemo(() => {
     return userCreatedShifts
       .filter(s => {
-        const shiftDate = new Date(s.date + 'T00:00:00Z');
+        const shiftDate = new Date(s.date + 'T00:00:00Z'); // Asegurar UTC
         return shiftDate < todayForCompare || s.status === 'cancelled';
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -89,7 +96,7 @@ export default function UserDashboardPage() {
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
             <DialogTrigger asChild>
-              <Button className="group w-full sm:w-auto">
+              <Button className="group w-full sm:w-auto" disabled={!user}>
                 <PlusCircle className="w-5 h-5 mr-2 transition-transform group-hover:rotate-90" />
                 Crear Nuevo Turno
               </Button>
@@ -102,7 +109,7 @@ export default function UserDashboardPage() {
               <CreateShiftForm onShiftCreated={() => { loadData(); setIsCreateModalOpen(false); setCurrentHistoryPage(1); }} setOpen={setIsCreateModalOpen} />
             </DialogContent>
           </Dialog>
-          <Button variant="outline" asChild className="group w-full sm:w-auto">
+          <Button variant="outline" asChild className="group w-full sm:w-auto" disabled={!user}>
             <Link href="/dashboard/user/invited-shifts">
               <MailCheck className="w-5 h-5 mr-2" />
               Mis Invitaciones

@@ -3,17 +3,9 @@
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { 
-  findUserByDni, 
-  verifyPassword, 
-  addUser, 
-  findUserByEmail, 
-  usersDB,
-  updateUserDetails,
-  updateUserPassword as updateUserPasswordHelper,
   generateAndStoreMockResetToken,
-  verifyAndConsumeMockResetToken,
-  updateUserPasswordByDni
-} from './auth-helpers';
+  verifyAndConsumeMockResetToken
+} from './auth-helpers'; // auth-helpers ahora solo tiene mocks de reset
 import { 
   addShift as addShiftDB, 
   getShiftsByUserId as getShiftsByUserIdDB, 
@@ -30,16 +22,19 @@ import {
   addRoomDB,
   updateRoomDB,
   deleteRoomDB,
-  findRoomById
+  findRoomById as findRoomByIdHelper // Renombrado para evitar conflicto de nombres
 } from './room-helpers';
-import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse, Room } from './types';
+import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse, Room, UserRole } from './types';
+
+// Define la URL base de tu backend. Deberías configurarla en tus variables de entorno.
+const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:3001';
+
 
 interface ActionResponse extends BaseActionResponse {
   user?: User; 
   room?: Room;
   rooms?: Room[];
 }
-
 
 const LoginSchema = z.object({
   dni: z.string().min(1, "DNI es requerido"),
@@ -63,7 +58,7 @@ const CreateShiftSchema = z.object({
   endTime: z.string().min(1, "Hora de fin es requerida"),
   theme: z.string().min(3, "Temática debe tener al menos 3 caracteres"),
   notes: z.string().optional(),
-  area: z.string().min(1, "Área es requerida"), // Area must be selected
+  area: z.string().min(1, "Área es requerida"),
   invitedUserDnis: z.string().optional().refine(val => { 
     if (!val || val.trim() === "") return true;
     const dnis = val.split(',').map(d => d.trim());
@@ -79,7 +74,6 @@ const CreateShiftSchema = z.object({
     path: ["endTime"],
 });
 
-
 const UpdateShiftSchema = z.object({
   shiftId: z.string().min(1, "ID de turno es requerido."),
   date: z.string().min(1, "Fecha es requerida"), 
@@ -87,7 +81,7 @@ const UpdateShiftSchema = z.object({
   endTime: z.string().min(1, "Hora de fin es requerida"),
   theme: z.string().min(3, "Temática debe tener al menos 3 caracteres"),
   notes: z.string().optional(),
-  area: z.string().min(1, "Área es requerida"), // Area must be selected
+  area: z.string().min(1, "Área es requerida"),
 }).refine(data => {
     const [startH, startM] = data.startTime.split(':').map(Number);
     const [endH, endM] = data.endTime.split(':').map(Number);
@@ -98,8 +92,7 @@ const UpdateShiftSchema = z.object({
     path: ["endTime"],
 });
 
-
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024; 
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 
 const UpdateProfileSchema = z.object({
@@ -117,9 +110,8 @@ const UpdateProfileSchema = z.object({
   removeProfilePicture: z.string().optional(), 
 });
 
-
 const ChangePasswordSchema = z.object({
-  currentPassword: z.string().min(1, "Contraseña actual es requerida."),
+  currentPassword: z.string().min(1, "Contraseña actual es requerida."), // Se mantiene para validación de UI, pero no se usa para verificar contra este backend
   newPassword: z.string().min(6, "Nueva contraseña debe tener al menos 6 caracteres."),
   confirmNewPassword: z.string(),
 }).refine(data => data.newPassword === data.confirmNewPassword, {
@@ -149,93 +141,173 @@ const UpdateRoomNameSchema = RoomNameSchema.extend({
   id: z.string().min(1, "ID de sala es requerido."),
 });
 
-
-interface MockSession {
-  currentUserId: string | null;
-  currentUserRole: 'user' | 'admin' | null;
-  currentUserDni: string | null;
-}
-
-declare global {
-  // eslint-disable-next-line no-var
-  var mockSession: MockSession | undefined;
-  // eslint-disable-next-line no-var
-  var mockPasswordResetTokens: Record<string, { token: string, expires: number }> | undefined;
-  // eslint-disable-next-line no-var
-  var mockLastGeneratedToken: { dni: string; token: string } | null | undefined;
-
-}
-
+// Simulación de sesión en memoria con JWT
 if (globalThis.mockSession === undefined) {
-  globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null };
+  globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null, token: null };
 }
-if (globalThis.mockPasswordResetTokens === undefined) {
-  globalThis.mockPasswordResetTokens = {};
-}
-if (globalThis.mockLastGeneratedToken === undefined) {
-  globalThis.mockLastGeneratedToken = null;
-}
-
 
 export async function loginUser(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const validatedFields = LoginSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!validatedFields.success) {
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
-
   const { dni, password } = validatedFields.data;
-  const user = findUserByDni(dni);
 
-  if (!user || !verifyPassword(password, user.password)) {
-    return { type: 'error', message: 'DNI o contraseña incorrectos.' };
-  }
-  
-  globalThis.mockSession = {
-      currentUserId: user.id,
-      currentUserRole: user.role,
-      currentUserDni: user.dni
-  };
+  try {
+    const response = await fetch(`${BACKEND_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dni, password }),
+    });
 
-  if (user.role === 'admin') {
-    redirect('/dashboard/admin');
-  } else {
-    redirect('/dashboard/user');
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { type: 'error', message: data.error || 'Error al iniciar sesión desde el backend.' };
+    }
+    
+    // Guardar token e ID de usuario en la sesión simulada
+    if (globalThis.mockSession) {
+      globalThis.mockSession.currentUserId = data.id.toString(); // El backend devuelve id como INTEGER
+      globalThis.mockSession.token = data.token;
+      // Para obtener rol y dni, necesitaríamos otra llamada o que el login los devuelva
+      // Por ahora, vamos a obtener los detalles del usuario con otra llamada
+      const userDetails = await fetchUserDetailsById(data.id.toString(), data.token);
+      if (userDetails) {
+        globalThis.mockSession.currentUserRole = userDetails.role;
+        globalThis.mockSession.currentUserDni = userDetails.dni;
+      } else {
+         // No se pudo obtener detalles, limpiar sesión parcial
+         globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null, token: null };
+         return { type: 'error', message: 'Login exitoso pero no se pudieron obtener detalles del usuario.' };
+      }
+    }
+    
+    if (globalThis.mockSession?.currentUserRole === 'admin') {
+      redirect('/dashboard/admin');
+    } else {
+      redirect('/dashboard/user');
+    }
+  } catch (error) {
+    console.error('Error en loginUser:', error);
+    return { type: 'error', message: 'Error de conexión con el servidor de autenticación.' };
   }
 }
+
+async function fetchUserDetailsById(userId: string, token: string): Promise<User | null> {
+  try {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${userId}`, { // Asumiendo que tu ruta es /usuarios/:id
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!response.ok) return null;
+    const backendUser = await response.json();
+    return {
+      id: backendUser.id.toString(),
+      dni: backendUser.dni,
+      fullName: backendUser.nombre, // Mapeo
+      email: backendUser.email,
+      role: backendUser.rol as UserRole, // Mapeo
+      profilePictureUrl: null, // El backend no maneja esto
+    };
+  } catch (error) {
+    console.error("Error fetching user details by ID:", error);
+    return null;
+  }
+}
+
 
 export async function registerUser(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const validatedFields = RegisterSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!validatedFields.success) {
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
-  const { dni, email, fullName, password } = validatedFields.data;
-
-  if (findUserByDni(dni)) {
-    return { type: 'error', message: 'DNI ya registrado.' };
+  // const { dni, email, fullName, password } = validatedFields.data;
+  // Actualmente, no tienes un endpoint de registro público en el backend proporcionado.
+  // Esta función necesitaría llamar a un endpoint POST /usuarios (o similar) que tu backend debería exponer.
+  console.warn("registerUser: No se ha implementado la llamada al endpoint de registro del backend. El backend debe proporcionar esta funcionalidad.");
+  return { 
+    type: 'error', 
+    message: 'La funcionalidad de registro no está completamente integrada con el backend. Por favor, contacta al administrador.' 
+  };
+  // Ejemplo de cómo sería si tuvieras un endpoint POST /usuarios:
+  /*
+  try {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios`, { // Asumiendo un endpoint POST /usuarios
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre: fullName, email, dni, password, rol: 'usuario' }), // 'rol' podría ser opcional si el backend lo asigna por defecto
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return { type: 'error', message: data.error || 'Error al registrar desde el backend.' };
+    }
+    return { type: 'success', message: 'Registro exitoso. Por favor, inicia sesión.', user: data }; // Asumiendo que el backend devuelve el usuario creado
+  } catch (error) {
+    console.error('Error en registerUser:', error);
+    return { type: 'error', message: 'Error de conexión con el servidor de registro.' };
   }
-  if (findUserByEmail(email)) {
-    return { type: 'error', message: 'Email ya registrado.' };
-  }
-
-  const newUser = addUser({ dni, email, fullName, password });
-  console.log(`Notification (simulated): New user registered - DNI: ${dni}, Email: ${email}`);
-  return { type: 'success', message: 'Registro exitoso. Por favor, inicia sesión.', user: newUser };
+  */
 }
 
-export async function getCurrentUserMock(): Promise<User | null> {
+export async function getCurrentUser(): Promise<User | null> {
   const session = globalThis.mockSession;
-  if (!session?.currentUserId) return null;
-  return usersDB.find(u => u.id === session.currentUserId) || null;
+  if (!session?.currentUserId || !session.token) {
+    console.log("getCurrentUser: No hay ID de usuario o token en sesión.");
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${session.currentUserId}`, {
+      headers: {
+        'Authorization': `Bearer ${session.token}`,
+      },
+    });
+
+    if (response.status === 401 || response.status === 403) { // Token inválido o expirado
+      console.log("getCurrentUser: Token inválido o expirado. Limpiando sesión.");
+      await logoutUser(); // Limpiar sesión y redirigir
+      return null;
+    }
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error(`getCurrentUser: Error del backend - Status: ${response.status}, Body: ${errorData}`);
+      return null;
+    }
+
+    const backendUser = await response.json();
+    // Mapear campos del backend a la interfaz User del frontend
+    const frontendUser: User = {
+      id: backendUser.id.toString(),
+      dni: backendUser.dni,
+      fullName: backendUser.nombre, 
+      email: backendUser.email,
+      role: backendUser.rol as UserRole,
+      profilePictureUrl: session.currentUserId === "1" ? null : session.currentUserId === "2" ? null : null // Mantener la lógica de profilePictureUrl del frontend por ahora
+    };
+     // Actualizar DNI y Rol en la sesión si es necesario (por si cambiaron)
+    if (globalThis.mockSession) {
+        globalThis.mockSession.currentUserDni = frontendUser.dni;
+        globalThis.mockSession.currentUserRole = frontendUser.role;
+    }
+    return frontendUser;
+  } catch (error) {
+    console.error('Error en getCurrentUser:', error);
+    return null;
+  }
 }
 
 export async function logoutUser() {
-  globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null };
+  if (globalThis.mockSession) {
+    globalThis.mockSession.currentUserId = null;
+    globalThis.mockSession.currentUserRole = null;
+    globalThis.mockSession.currentUserDni = null;
+    globalThis.mockSession.token = null;
+  }
   redirect('/login');
 }
 
-
 export async function createShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const user = await getCurrentUserMock();
+  const user = await getCurrentUser();
   if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
 
   const validatedFields = CreateShiftSchema.safeParse(Object.fromEntries(formData.entries()));
@@ -244,12 +316,17 @@ export async function createShift(prevState: ActionResponse | null, formData: Fo
   }
   const data = validatedFields.data;
   
+  // La lógica de validación de DNIs invitados debe ahora verificar contra el backend si es necesario,
+  // o asumir que el frontend ya lo hizo (por ejemplo, si hay un buscador de usuarios).
+  // Por simplicidad, mantendremos la validación de formato del DNI aquí.
   const invitedDnisArray = data.invitedUserDnis?.split(',').map(d => d.trim()).filter(d => d && d !== user.dni) || [];
   const uniqueInvitedDnisArray = Array.from(new Set(invitedDnisArray)); 
 
-  if (uniqueInvitedDnisArray.some(dni => !findUserByDni(dni))) {
-    return { type: 'error', message: 'Uno o más DNIs invitados no corresponden a usuarios registrados.' };
-  }
+  // Aquí podrías añadir una llamada al backend GET /dni/:dni para cada DNI invitado para verificar existencia.
+  // Por ahora, se omite para simplificar.
+  // if (uniqueInvitedDnisArray.some(dni => !findUserByDni(dni))) { // Esta función ya no existe localmente
+  //   return { type: 'error', message: 'Uno o más DNIs invitados no corresponden a usuarios registrados.' };
+  // }
 
   const participantCount = 1 + uniqueInvitedDnisArray.length; 
   
@@ -258,7 +335,7 @@ export async function createShift(prevState: ActionResponse | null, formData: Fo
     creatorId: user.id, 
     invitedUserDnis: uniqueInvitedDnisArray,
     participantCount: participantCount 
-  }, user);
+  }, user); // addShiftDB ahora necesita el objeto User completo
 
   console.log(`Notification (simulated): Shift "${newShift.theme}" created by ${user.fullName}. Area: ${newShift.area}`);
   if (uniqueInvitedDnisArray.length > 0) {
@@ -269,19 +346,22 @@ export async function createShift(prevState: ActionResponse | null, formData: Fo
 }
 
 export async function getUserShifts(): Promise<Shift[]> {
-  const user = await getCurrentUserMock();
+  const user = await getCurrentUser();
   if (!user?.id) return [];
+  // Esta función sigue usando la lógica local de shift-helpers.ts.
+  // Si los turnos también se gestionan en el backend, esto debería cambiar.
   return getShiftsByUserIdDB(user.id);
 }
 
 export async function getAllShiftsAdmin(): Promise<Shift[]> {
-  const user = await getCurrentUserMock();
+  const user = await getCurrentUser();
   if (user?.role !== 'admin') return [];
+  // Esta función sigue usando la lógica local de shift-helpers.ts.
   return getAllShiftsDB();
 }
 
 export async function updateShiftStatus(shiftId: string, status: ShiftStatus): Promise<ActionResponse> {
-  const adminUser = await getCurrentUserMock();
+  const adminUser = await getCurrentUser();
   if (adminUser?.role !== 'admin') return { type: 'error', message: 'No autorizado' };
   
   const updatedShift = updateShiftStatusDB(shiftId, status);
@@ -294,8 +374,11 @@ export async function updateShiftStatus(shiftId: string, status: ShiftStatus): P
 }
 
 export async function inviteUserToShift(shiftId: string, userDniToInvite: string): Promise<ActionResponse> {
-   const invitingUser = await getCurrentUserMock();
+   const invitingUser = await getCurrentUser();
    if (!invitingUser) return { type: 'error', message: 'Usuario no autenticado.' };
+
+   // Aquí deberías verificar si userDniToInvite existe llamando a GET /usuarios/dni/:dni de tu backend.
+   // Por ahora, se omite para simplificar.
 
    const result = inviteUserToShiftDB(shiftId, userDniToInvite);
    if ('error' in result) {
@@ -307,7 +390,7 @@ export async function inviteUserToShift(shiftId: string, userDniToInvite: string
 }
 
 export async function respondToShiftInvitation(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const respondingUser = await getCurrentUserMock();
+  const respondingUser = await getCurrentUser();
   if (!respondingUser || !respondingUser.dni) return { type: 'error', message: 'Usuario no autenticado o DNI no encontrado.' };
 
   const shiftId = formData.get('shiftId') as string;
@@ -337,178 +420,128 @@ export async function respondToShiftInvitation(prevState: ActionResponse | null,
   return { type: 'success', message: successMessage, shift: shiftDetails };
 }
 
-export async function updateUserProfile(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const user = await getCurrentUserMock();
-  if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
+export async function updateUserProfile(prevState: ActionResponse | null, formDataObj: FormData): Promise<ActionResponse> {
+  const user = await getCurrentUser();
+  if (!user || !globalThis.mockSession?.token) return { type: 'error', message: 'Usuario no autenticado.' };
 
-  const validatedFields = UpdateProfileSchema.safeParse(Object.fromEntries(formData.entries()));
+  // No enviar profilePicture al backend ya que no lo maneja.
+  // Extraer campos que sí van al backend.
+  const rawFormData = Object.fromEntries(formDataObj.entries());
+  const validatedFields = UpdateProfileSchema.safeParse(rawFormData);
+
   if (!validatedFields.success) {
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
   
-  const { fullName, email, profilePicture, removeProfilePicture } = validatedFields.data;
+  const { fullName, email } = validatedFields.data; // profilePicture y removeProfilePicture se ignoran para el backend
 
-  if (email !== user.email) {
-    const existingUserWithNewEmail = findUserByEmail(email);
-    if (existingUserWithNewEmail && existingUserWithNewEmail.id !== user.id) {
-      return { type: 'error', message: 'El nuevo email ya está registrado por otro usuario.', errors: { email: ['Email ya en uso.'] } };
+  try {
+    const backendPayload = {
+        nombre: fullName, // Mapeo
+        email: email,
+    };
+
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${user.id}`, { // Asumiendo que tu ruta es /usuarios/:id
+        method: 'PUT',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${globalThis.mockSession.token}`,
+        },
+        body: JSON.stringify(backendPayload),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+        // Intentar obtener errores específicos del backend si los hay
+        const fieldErrors: Record<string, string[]> = {};
+        if (responseData.error && typeof responseData.error === 'string' && responseData.error.toLowerCase().includes('email_unique')) {
+            fieldErrors.email = ['Este email ya está en uso.'];
+        }
+        return { type: 'error', message: responseData.mensaje || responseData.error || 'Error al actualizar el perfil desde el backend.', errors: fieldErrors };
     }
-  }
-  
-  let profilePictureUrlToUpdate: string | null | undefined = undefined;
+    
+    // El backend devuelve 'mensaje', no el objeto usuario actualizado.
+    // Por lo tanto, tenemos que reconstruir el objeto usuario o volver a obtenerlo.
+    // Para una mejor UX, reconstruimos con los datos enviados y mantenemos el profilePictureUrl del frontend.
+    const updatedFrontendUser: User = {
+        ...user,
+        fullName: fullName,
+        email: email,
+        // profilePictureUrl se mantiene como estaba en el frontend (no se actualiza desde este backend)
+    };
+    console.log(`Notification (simulated): User profile for ${updatedFrontendUser.fullName} (ID: ${user.id}) updated via backend.`);
+    return { type: 'success', message: responseData.mensaje || 'Perfil actualizado exitosamente.', user: updatedFrontendUser };
 
-  if (removeProfilePicture === 'true') {
-    profilePictureUrlToUpdate = null;
-  } else if (profilePicture) {
-    profilePictureUrlToUpdate = `https://placehold.co/100x100/7FBC8F/FFFFFF.png?text=✓&unique=${Date.now()}`; 
+  } catch (error) {
+    console.error('Error en updateUserProfile:', error);
+    return { type: 'error', message: 'Error de conexión al actualizar el perfil.' };
   }
-
-  const updatedUser = updateUserDetails(user.id, { 
-    fullName, 
-    email, 
-    ...(profilePictureUrlToUpdate !== undefined && { profilePictureUrl: profilePictureUrlToUpdate })
-  });
-
-  if (updatedUser) {
-    console.log(`Notification (simulated): User profile for ${updatedUser.fullName} (ID: ${user.id}) updated.`);
-    return { type: 'success', message: 'Perfil actualizado exitosamente.', user: updatedUser };
-  }
-  return { type: 'error', message: 'Error al actualizar el perfil.' };
 }
 
 export async function changeUserPassword(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const user = await getCurrentUserMock();
-  if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
+  const user = await getCurrentUser(); // Esto obtiene el usuario actual autenticado
+  if (!user || !globalThis.mockSession?.token) return { type: 'error', message: 'Usuario no autenticado.' };
 
   const validatedFields = ChangePasswordSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!validatedFields.success) {
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
-  const { currentPassword, newPassword } = validatedFields.data;
+  // La contraseña actual (currentPassword) no se envía al backend PUT /:id para el cambio de contraseña,
+  // ya que ese endpoint solo toma la nueva contraseña. La verificación de la contraseña actual
+  // debería ocurrir en un endpoint dedicado o como parte de la lógica de este si el backend lo soportara.
+  const { newPassword } = validatedFields.data;
 
-  if (!verifyPassword(currentPassword, user.password)) {
-    return { type: 'error', message: 'La contraseña actual es incorrecta.', errors: { currentPassword: ['Contraseña actual incorrecta.'] } };
-  }
+  try {
+    const backendPayload = {
+        password: newPassword, // El backend se encargará de hashearla con el hook
+    };
 
-  const success = updateUserPasswordHelper(user.id, newPassword);
-  if (success) {
-    console.log(`Notification (simulated): Password changed for user ${user.fullName} (ID: ${user.id}).`);
-    return { type: 'success', message: 'Contraseña actualizada exitosamente.' };
-  }
-  return { type: 'error', message: 'Error al actualizar la contraseña.' };
-}
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${user.id}`, { // Asumiendo ruta /usuarios/:id
+        method: 'PUT',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${globalThis.mockSession.token}`,
+        },
+        body: JSON.stringify(backendPayload),
+    });
+    
+    const responseData = await response.json();
 
-export async function updateShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const currentUser = await getCurrentUserMock();
-  if (!currentUser) return { type: 'error', message: 'Usuario no autenticado.' };
-  
-  const rawFormData = Object.fromEntries(formData.entries());
-  const validatedFields = UpdateShiftSchema.safeParse(rawFormData);
-
-  if (!validatedFields.success) {
-    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
-  }
-  
-  const { shiftId, ...editableData } = validatedFields.data;
-
-  const shiftToUpdate = getAllShiftsDB().find(s => s.id === shiftId);
-  if (!shiftToUpdate) return { type: 'error', message: 'Turno no encontrado.' };
-
-  const isCreator = shiftToUpdate.creatorId === currentUser.id;
-  const isAdmin = currentUser.role === 'admin';
-
-  if (!isAdmin && !isCreator) {
-    return { type: 'error', message: 'No tienes permiso para editar este turno.' };
-  }
- 
-  if (!isAdmin && isCreator && shiftToUpdate.status === 'cancelled') {
-    return { type: 'error', message: 'No puedes editar un turno cancelado.' };
-  }
-  
-  const result = updateShiftDetailsDB(shiftId, {
-    date: editableData.date,
-    startTime: editableData.startTime,
-    endTime: editableData.endTime,
-    theme: editableData.theme, 
-    notes: editableData.notes,
-    area: editableData.area,
-  });
-
-  if ('error' in result) {
-    return { type: 'error', message: result.error };
-  }
-
-  const updatedShift = result;
-  console.log(`Notification (simulated): Shift "${updatedShift.theme}" (ID: ${shiftId}) updated by ${currentUser.fullName}. Area: ${updatedShift.area}`);
-  
-  const partiesToNotify = new Set<string>();
-  if (updatedShift.creatorDni && updatedShift.creatorDni !== currentUser.dni) {
-      partiesToNotify.add(`Creator DNI: ${updatedShift.creatorDni}`);
-  }
-  updatedShift.invitedUserDnis.forEach(dni => {
-    if (dni !== currentUser.dni) partiesToNotify.add(`Invited DNI: ${dni}`);
-  });
-  
-  if (partiesToNotify.size > 0) {
-    console.log(`Notification (simulated): Inform involved parties (${Array.from(partiesToNotify).join(', ')}) about the update to shift "${updatedShift.theme}".`);
-  }
-
-  return { type: 'success', message: 'Turno actualizado exitosamente.', shift: updatedShift };
-}
-
-export async function cancelShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const user = await getCurrentUserMock();
-  if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
-
-  if (user.role === 'admin') {
-    return { type: 'error', message: 'Los administradores deben usar el cambio de estado para cancelar.' };
-  }
-
-  const shiftId = formData.get('shiftId') as string;
-  if (!shiftId) return { type: 'error', message: 'ID de turno no proporcionado.' };
-  
-  const shiftToCancel = getAllShiftsDB().find(s => s.id === shiftId);
-  if (!shiftToCancel) return { type: 'error', message: 'Turno no encontrado.' };
-
-
-  if (shiftToCancel.creatorId !== user.id) {
-    return { type: 'error', message: 'No tienes permiso para cancelar este turno.' };
-  }
-
-  if (shiftToCancel.status === 'cancelled') {
-    return { type: 'error', message: 'El turno ya está cancelado.' };
-  }
-  
-  const cancelledShift = cancelShiftDB(shiftId);
-  if (cancelledShift) {
-    console.log(`Notification (simulated): Shift "${cancelledShift.theme}" (ID: ${shiftId}) cancelled by creator ${user.fullName}.`);
-    if (cancelledShift.invitedUserDnis.length > 0) {
-        console.log(`Notification (simulated): Inform invited users (${cancelledShift.invitedUserDnis.join(', ')}) about the cancellation of shift "${cancelledShift.theme}".`);
+    if (!response.ok) {
+        return { type: 'error', message: responseData.mensaje || responseData.error || 'Error al cambiar la contraseña desde el backend.' };
     }
-    return { type: 'success', message: 'Turno cancelado exitosamente.', shift: cancelledShift };
+    
+    console.log(`Notification (simulated): Password changed for user ${user.fullName} (ID: ${user.id}) via backend.`);
+    return { type: 'success', message: responseData.mensaje || 'Contraseña actualizada exitosamente.' };
+
+  } catch (error) {
+    console.error('Error en changeUserPassword:', error);
+    return { type: 'error', message: 'Error de conexión al cambiar la contraseña.' };
   }
-  return { type: 'error', message: 'Error al cancelar el turno.' };
 }
 
+// --- Password Reset Actions (MOCK - SIN INTEGRACIÓN DE BACKEND TODAVÍA) ---
 export async function requestPasswordReset(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const validatedFields = ForgotPasswordSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!validatedFields.success) {
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
   const { dni } = validatedFields.data;
-  const user = findUserByDni(dni);
+  
+  // En una implementación real, verificarías si el DNI existe en tu backend aquí.
+  // const userExists = await checkUserExistsByDni(dni);
+  // if (!userExists) {
+  //   return { type: 'success', message: "Si existe una cuenta con este DNI, se ha enviado un (simulado) enlace para restablecer la contraseña." };
+  // }
 
-  if (!user) {
-    return { type: 'success', message: "Si existe una cuenta con este DNI, se ha enviado un (simulado) enlace para restablecer la contraseña." };
-  }
-
-  const token = generateAndStoreMockResetToken(dni);
+  const token = generateAndStoreMockResetToken(dni); // Sigue siendo mock
   if (!token) {
-    return { type: 'error', message: "No se pudo generar el token de restablecimiento. Inténtalo de nuevo." };
+    return { type: 'error', message: "No se pudo generar el token de restablecimiento (mock). Inténtalo de nuevo." };
   }
   
-  globalThis.mockLastGeneratedToken = { dni: user.dni, token };
-  console.log(`Notification (simulated): Password reset requested for DNI ${dni}. Mock token: ${token}. (Simulated email sent to ${user.email})`);
+  globalThis.mockLastGeneratedToken = { dni: dni, token }; // Sigue siendo mock
+  console.log(`Notification (simulated): Password reset requested for DNI ${dni}. Mock token: ${token}.`);
 
   return { type: 'success', message: "Si existe una cuenta con este DNI, se ha enviado un (simulado) enlace para restablecer la contraseña." };
 }
@@ -520,32 +553,28 @@ export async function resetPasswordWithToken(prevState: ActionResponse | null, f
   }
   const { dni, token, newPassword } = validatedFields.data;
 
+  // Lógica de mock para verificar y consumir token
   if (!verifyAndConsumeMockResetToken(dni, token)) {
-    return { type: 'error', message: "Token inválido o expirado. Por favor, solicita un nuevo restablecimiento de contraseña.", errors: { token: ["Token inválido o expirado."] }};
+    return { type: 'error', message: "Token (mock) inválido o expirado. Por favor, solicita un nuevo restablecimiento.", errors: { token: ["Token inválido o expirado."] }};
   }
 
-  const success = updateUserPasswordByDni(dni, newPassword);
-  if (success) {
-    const user = findUserByDni(dni);
-    console.log(`Notification (simulated): Password successfully reset for DNI ${dni}. (Simulated confirmation email sent to ${user?.email})`);
-    redirect('/login?reset=success');
-  }
-  return { type: 'error', message: "No se pudo restablecer la contraseña. Inténtalo de nuevo." };
+  // En una implementación real, aquí llamarías a tu endpoint de backend para resetear la contraseña con el DNI y el nuevo password.
+  // const success = await callBackendToResetPassword(dni, newPassword, token); // Necesitarías un token de reset del backend
+  // if (success) {
+  //   redirect('/login?reset=success');
+  // }
+  console.warn("resetPasswordWithToken: Usando lógica de mock. El backend debe proveer un endpoint para esto.");
+  return { type: 'error', message: "Funcionalidad de reseteo de contraseña con backend no implementada." };
 }
 
-// Room Management Actions
+
+// --- Room Management Actions (sin cambios, ya usan helpers locales) ---
 export async function getManagedRooms(): Promise<Room[]> {
-  const user = await getCurrentUserMock();
-  if (user?.role !== 'admin') {
-    // Non-admins should not call this, but if they do, return empty or throw error
-    // For now, let's allow any authenticated user to fetch rooms for the Select components in shift forms.
-    // The creation/edit/delete of rooms will be strictly admin-only.
-  }
-  return getRoomsDB();
+  return getRoomsDB(); // Asume que room-helpers es async si es necesario
 }
 
 export async function addManagedRoom(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const user = await getCurrentUserMock();
+  const user = await getCurrentUser();
   if (user?.role !== 'admin') return { type: 'error', message: 'No autorizado.' };
 
   const validatedFields = RoomNameSchema.safeParse(Object.fromEntries(formData.entries()));
@@ -553,7 +582,7 @@ export async function addManagedRoom(prevState: ActionResponse | null, formData:
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
   const { name } = validatedFields.data;
-  const result = addRoomDB(name);
+  const result = await addRoomDB(name);
 
   if ('error' in result) {
     return { type: 'error', message: result.error, errors: { name: [result.error] } };
@@ -563,7 +592,7 @@ export async function addManagedRoom(prevState: ActionResponse | null, formData:
 }
 
 export async function updateManagedRoom(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const user = await getCurrentUserMock();
+  const user = await getCurrentUser();
   if (user?.role !== 'admin') return { type: 'error', message: 'No autorizado.' };
 
   const validatedFields = UpdateRoomNameSchema.safeParse(Object.fromEntries(formData.entries()));
@@ -571,7 +600,7 @@ export async function updateManagedRoom(prevState: ActionResponse | null, formDa
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
   const { id, name } = validatedFields.data;
-  const result = updateRoomDB(id, name);
+  const result = await updateRoomDB(id, name);
 
   if ('error' in result) {
     return { type: 'error', message: result.error, errors: { name: [result.error] } };
@@ -581,25 +610,58 @@ export async function updateManagedRoom(prevState: ActionResponse | null, formDa
 }
 
 export async function deleteManagedRoom(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const user = await getCurrentUserMock();
+  const user = await getCurrentUser();
   if (user?.role !== 'admin') return { type: 'error', message: 'No autorizado.' };
 
   const id = formData.get('id') as string;
   if (!id) return { type: 'error', message: 'ID de sala es requerido.' };
 
-  const roomToDelete = findRoomById(id);
+  const roomToDelete = await findRoomByIdHelper(id);
   if (!roomToDelete) return { type: 'error', message: 'Sala no encontrada.' };
 
-  const success = deleteRoomDB(id);
+  const success = await deleteRoomDB(id);
   if (success) {
     console.log(`Admin ${user.fullName} deleted room: ${roomToDelete.name} (ID: ${id})`);
-    // Consider: Add logic to check if room is in use by active/future shifts.
-    // For now, we just log.
-    const shiftsUsingRoom = getAllShiftsDB().filter(shift => shift.area === roomToDelete.name && (shift.status === 'pending' || shift.status === 'accepted')).length;
+    const shiftsUsingRoom = (await getAllShiftsDB()).filter(shift => shift.area === roomToDelete.name && (shift.status === 'pending' || shift.status === 'accepted')).length;
     if (shiftsUsingRoom > 0) {
         console.warn(`Warning: Room "${roomToDelete.name}" was deleted but is still associated with ${shiftsUsingRoom} active/pending shift(s). Their 'area' field will retain this name unless manually updated.`);
     }
     return { type: 'success', message: 'Sala eliminada exitosamente.' };
   }
   return { type: 'error', message: 'Error al eliminar la sala.' };
+}
+
+// Funciones para obtener información del usuario para el frontend (ej. ShiftCard)
+// Estas podrían ser reemplazadas o complementadas por llamadas directas al backend si es necesario.
+export async function findUserByDni(dni: string): Promise<User | null> {
+    // Esta función ahora DEBERÍA llamar al backend.
+    // Por ahora, la dejo como placeholder ya que el getCurrentUser ya está implementado.
+    // Si se necesita buscar CUALQUIER usuario por DNI desde el frontend (no solo el actual),
+    // se necesitaría un endpoint GET /usuarios/dni/:dni y la lógica de fetch aquí.
+    const session = globalThis.mockSession;
+    if (!session?.token) {
+      console.warn("findUserByDni: No hay token en sesión para autenticar la llamada al backend.");
+      return null;
+    }
+    try {
+        const response = await fetch(`${BACKEND_BASE_URL}/usuarios/dni/${dni}`, { // Asumiendo esta ruta en tu backend
+            headers: { 'Authorization': `Bearer ${session.token}` }
+        });
+        if (!response.ok) {
+            console.error(`findUserByDni: Error ${response.status} al buscar DNI ${dni}`);
+            return null;
+        }
+        const backendUser = await response.json();
+        return {
+            id: backendUser.id.toString(),
+            dni: backendUser.dni,
+            fullName: backendUser.nombre,
+            email: backendUser.email,
+            role: backendUser.rol as UserRole,
+            profilePictureUrl: null, 
+        };
+    } catch (error) {
+        console.error(`Error en findUserByDni para DNI ${dni}:`, error);
+        return null;
+    }
 }

@@ -25,10 +25,19 @@ import {
   updateShiftDetailsDB,
   cancelShiftDB
 } from './shift-helpers';
-import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse } from './types';
+import {
+  getRoomsDB,
+  addRoomDB,
+  updateRoomDB,
+  deleteRoomDB,
+  findRoomById
+} from './room-helpers';
+import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse, Room } from './types';
 
 interface ActionResponse extends BaseActionResponse {
   user?: User; 
+  room?: Room;
+  rooms?: Room[];
 }
 
 
@@ -54,13 +63,22 @@ const CreateShiftSchema = z.object({
   endTime: z.string().min(1, "Hora de fin es requerida"),
   theme: z.string().min(3, "Temática debe tener al menos 3 caracteres"),
   notes: z.string().optional(),
-  area: z.string().min(3, "Área debe tener al menos 3 caracteres"),
+  area: z.string().min(1, "Área es requerida"), // Area must be selected
   invitedUserDnis: z.string().optional().refine(val => { 
     if (!val || val.trim() === "") return true;
     const dnis = val.split(',').map(d => d.trim());
     return dnis.every(dni => /^\d{7,8}$/.test(dni));
   }, "Uno o más DNIs invitados no son válidos (7-8 dígitos)."),
+}).refine(data => {
+    const [startH, startM] = data.startTime.split(':').map(Number);
+    const [endH, endM] = data.endTime.split(':').map(Number);
+    if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) return false;
+    return (startH * 60 + startM) < (endH * 60 + endM);
+}, {
+    message: "Hora de fin debe ser posterior a hora de inicio.",
+    path: ["endTime"],
 });
+
 
 const UpdateShiftSchema = z.object({
   shiftId: z.string().min(1, "ID de turno es requerido."),
@@ -69,10 +87,11 @@ const UpdateShiftSchema = z.object({
   endTime: z.string().min(1, "Hora de fin es requerida"),
   theme: z.string().min(3, "Temática debe tener al menos 3 caracteres"),
   notes: z.string().optional(),
-  area: z.string().min(3, "Área debe tener al menos 3 caracteres"),
+  area: z.string().min(1, "Área es requerida"), // Area must be selected
 }).refine(data => {
     const [startH, startM] = data.startTime.split(':').map(Number);
     const [endH, endM] = data.endTime.split(':').map(Number);
+    if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) return false;
     return (startH * 60 + startM) < (endH * 60 + endM);
 }, {
     message: "Hora de fin debe ser posterior a hora de inicio.",
@@ -120,6 +139,14 @@ const ResetPasswordSchema = z.object({
 }).refine(data => data.newPassword === data.confirmNewPassword, {
   message: "Las contraseñas no coinciden.",
   path: ["confirmNewPassword"],
+});
+
+const RoomNameSchema = z.object({
+  name: z.string().min(3, "Nombre de la sala debe tener al menos 3 caracteres.").max(50, "Nombre de la sala no puede exceder los 50 caracteres."),
+});
+
+const UpdateRoomNameSchema = RoomNameSchema.extend({
+  id: z.string().min(1, "ID de sala es requerido."),
 });
 
 
@@ -191,7 +218,7 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
   }
 
   const newUser = addUser({ dni, email, fullName, password });
-  console.log(`Notification: New user registered - DNI: ${dni}, Email: ${email}`);
+  console.log(`Notification (simulated): New user registered - DNI: ${dni}, Email: ${email}`);
   return { type: 'success', message: 'Registro exitoso. Por favor, inicia sesión.', user: newUser };
 }
 
@@ -233,9 +260,9 @@ export async function createShift(prevState: ActionResponse | null, formData: Fo
     participantCount: participantCount 
   }, user);
 
-  console.log(`Notification: Shift "${newShift.theme}" created by ${user.fullName}.`);
+  console.log(`Notification (simulated): Shift "${newShift.theme}" created by ${user.fullName}. Area: ${newShift.area}`);
   if (uniqueInvitedDnisArray.length > 0) {
-    console.log(`Notification: Inform invited users (${uniqueInvitedDnisArray.join(', ')}) about new shift invitation for "${newShift.theme}".`);
+    console.log(`Notification (simulated): Inform invited users (${uniqueInvitedDnisArray.join(', ')}) about new shift invitation for "${newShift.theme}".`);
   }
 
   return { type: 'success', message: 'Turno creado exitosamente.', shift: newShift };
@@ -259,8 +286,8 @@ export async function updateShiftStatus(shiftId: string, status: ShiftStatus): P
   
   const updatedShift = updateShiftStatusDB(shiftId, status);
   if (updatedShift) {
-    console.log(`Notification: Status of shift "${updatedShift.theme}" (ID: ${shiftId}) changed to "${status}" by admin ${adminUser.fullName}.`);
-    console.log(`Notification: Inform creator (${updatedShift.creatorFullName}) and invited users (${updatedShift.invitedUserDnis.join(', ') || 'none'}) about status change.`);
+    console.log(`Notification (simulated): Status of shift "${updatedShift.theme}" (ID: ${shiftId}) changed to "${status}" by admin ${adminUser.fullName}.`);
+    console.log(`Notification (simulated): Inform creator (${updatedShift.creatorFullName}) and invited users (${updatedShift.invitedUserDnis.join(', ') || 'none'}) about status change.`);
     return { type: 'success', message: 'Estado actualizado', shift: updatedShift };
   }
   return { type: 'error', message: 'Error al actualizar el turno' };
@@ -274,8 +301,8 @@ export async function inviteUserToShift(shiftId: string, userDniToInvite: string
    if ('error' in result) {
     return { type: 'error', message: result.error };
    }
-   console.log(`Notification: User DNI ${userDniToInvite} invited to shift "${result.theme}" (ID: ${shiftId}) by ${invitingUser.fullName}.`);
-   console.log(`Notification: Send invitation to user DNI ${userDniToInvite}.`);
+   console.log(`Notification (simulated): User DNI ${userDniToInvite} invited to shift "${result.theme}" (ID: ${shiftId}) by ${invitingUser.fullName}.`);
+   console.log(`Notification (simulated): Send invitation to user DNI ${userDniToInvite}.`);
    return { type: 'success', message: 'Usuario invitado.', shift: result };
 }
 
@@ -301,10 +328,10 @@ export async function respondToShiftInvitation(prevState: ActionResponse | null,
     return { type: 'error', message: result.error };
   }
   
-  const shiftDetails = result; // result is the updated shift object
+  const shiftDetails = result; 
   const actionText = response === 'accept' ? 'accepted' : 'declined/left';
-  console.log(`Notification: User ${respondingUser.fullName} ${actionText} invitation to shift "${shiftDetails.theme}" (ID: ${shiftId}).`);
-  console.log(`Notification: Inform creator (${shiftDetails.creatorFullName}) about this response.`);
+  console.log(`Notification (simulated): User ${respondingUser.fullName} ${actionText} invitation to shift "${shiftDetails.theme}" (ID: ${shiftId}).`);
+  console.log(`Notification (simulated): Inform creator (${shiftDetails.creatorFullName}) about this response.`);
   
   const successMessage = response === 'accept' ? 'Invitación aceptada.' : 'Respuesta actualizada.';
   return { type: 'success', message: successMessage, shift: shiftDetails };
@@ -343,7 +370,7 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
   });
 
   if (updatedUser) {
-    console.log(`Notification: User profile for ${updatedUser.fullName} (ID: ${user.id}) updated.`);
+    console.log(`Notification (simulated): User profile for ${updatedUser.fullName} (ID: ${user.id}) updated.`);
     return { type: 'success', message: 'Perfil actualizado exitosamente.', user: updatedUser };
   }
   return { type: 'error', message: 'Error al actualizar el perfil.' };
@@ -365,7 +392,7 @@ export async function changeUserPassword(prevState: ActionResponse | null, formD
 
   const success = updateUserPasswordHelper(user.id, newPassword);
   if (success) {
-    console.log(`Notification: Password changed for user ${user.fullName} (ID: ${user.id}).`);
+    console.log(`Notification (simulated): Password changed for user ${user.fullName} (ID: ${user.id}).`);
     return { type: 'success', message: 'Contraseña actualizada exitosamente.' };
   }
   return { type: 'error', message: 'Error al actualizar la contraseña.' };
@@ -402,7 +429,7 @@ export async function updateShift(prevState: ActionResponse | null, formData: Fo
     date: editableData.date,
     startTime: editableData.startTime,
     endTime: editableData.endTime,
-    theme: editableData.theme, // Theme is now editable
+    theme: editableData.theme, 
     notes: editableData.notes,
     area: editableData.area,
   });
@@ -412,16 +439,18 @@ export async function updateShift(prevState: ActionResponse | null, formData: Fo
   }
 
   const updatedShift = result;
-  console.log(`Notification: Shift "${updatedShift.theme}" (ID: ${shiftId}) updated by ${currentUser.fullName}.`);
-  // Notify creator (if not the one updating) and all invited users.
+  console.log(`Notification (simulated): Shift "${updatedShift.theme}" (ID: ${shiftId}) updated by ${currentUser.fullName}. Area: ${updatedShift.area}`);
+  
   const partiesToNotify = new Set<string>();
   if (updatedShift.creatorDni && updatedShift.creatorDni !== currentUser.dni) {
       partiesToNotify.add(`Creator DNI: ${updatedShift.creatorDni}`);
   }
-  updatedShift.invitedUserDnis.forEach(dni => partiesToNotify.add(`Invited DNI: ${dni}`));
+  updatedShift.invitedUserDnis.forEach(dni => {
+    if (dni !== currentUser.dni) partiesToNotify.add(`Invited DNI: ${dni}`);
+  });
   
   if (partiesToNotify.size > 0) {
-    console.log(`Notification: Inform involved parties (${Array.from(partiesToNotify).join(', ')}) about the update to shift "${updatedShift.theme}".`);
+    console.log(`Notification (simulated): Inform involved parties (${Array.from(partiesToNotify).join(', ')}) about the update to shift "${updatedShift.theme}".`);
   }
 
   return { type: 'success', message: 'Turno actualizado exitosamente.', shift: updatedShift };
@@ -431,16 +460,16 @@ export async function cancelShift(prevState: ActionResponse | null, formData: Fo
   const user = await getCurrentUserMock();
   if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
 
+  if (user.role === 'admin') {
+    return { type: 'error', message: 'Los administradores deben usar el cambio de estado para cancelar.' };
+  }
+
   const shiftId = formData.get('shiftId') as string;
   if (!shiftId) return { type: 'error', message: 'ID de turno no proporcionado.' };
   
   const shiftToCancel = getAllShiftsDB().find(s => s.id === shiftId);
   if (!shiftToCancel) return { type: 'error', message: 'Turno no encontrado.' };
 
-  if (user.role === 'admin') {
-     // Admins should use updateShiftStatus
-     return { type: 'error', message: 'Los administradores deben usar el cambio de estado para cancelar.' };
-  }
 
   if (shiftToCancel.creatorId !== user.id) {
     return { type: 'error', message: 'No tienes permiso para cancelar este turno.' };
@@ -452,9 +481,9 @@ export async function cancelShift(prevState: ActionResponse | null, formData: Fo
   
   const cancelledShift = cancelShiftDB(shiftId);
   if (cancelledShift) {
-    console.log(`Notification: Shift "${cancelledShift.theme}" (ID: ${shiftId}) cancelled by creator ${user.fullName}.`);
+    console.log(`Notification (simulated): Shift "${cancelledShift.theme}" (ID: ${shiftId}) cancelled by creator ${user.fullName}.`);
     if (cancelledShift.invitedUserDnis.length > 0) {
-        console.log(`Notification: Inform invited users (${cancelledShift.invitedUserDnis.join(', ')}) about the cancellation of shift "${cancelledShift.theme}".`);
+        console.log(`Notification (simulated): Inform invited users (${cancelledShift.invitedUserDnis.join(', ')}) about the cancellation of shift "${cancelledShift.theme}".`);
     }
     return { type: 'success', message: 'Turno cancelado exitosamente.', shift: cancelledShift };
   }
@@ -470,7 +499,6 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
   const user = findUserByDni(dni);
 
   if (!user) {
-    // Return a generic message even if user not found to avoid account enumeration
     return { type: 'success', message: "Si existe una cuenta con este DNI, se ha enviado un (simulado) enlace para restablecer la contraseña." };
   }
 
@@ -480,7 +508,7 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
   }
   
   globalThis.mockLastGeneratedToken = { dni: user.dni, token };
-  console.log(`Notification: Password reset requested for DNI ${dni}. Mock token: ${token}. (Simulated email sent to ${user.email})`);
+  console.log(`Notification (simulated): Password reset requested for DNI ${dni}. Mock token: ${token}. (Simulated email sent to ${user.email})`);
 
   return { type: 'success', message: "Si existe una cuenta con este DNI, se ha enviado un (simulado) enlace para restablecer la contraseña." };
 }
@@ -499,11 +527,79 @@ export async function resetPasswordWithToken(prevState: ActionResponse | null, f
   const success = updateUserPasswordByDni(dni, newPassword);
   if (success) {
     const user = findUserByDni(dni);
-    console.log(`Notification: Password successfully reset for DNI ${dni}. (Simulated confirmation email sent to ${user?.email})`);
+    console.log(`Notification (simulated): Password successfully reset for DNI ${dni}. (Simulated confirmation email sent to ${user?.email})`);
     redirect('/login?reset=success');
   }
   return { type: 'error', message: "No se pudo restablecer la contraseña. Inténtalo de nuevo." };
 }
 
+// Room Management Actions
+export async function getManagedRooms(): Promise<Room[]> {
+  const user = await getCurrentUserMock();
+  if (user?.role !== 'admin') {
+    // Non-admins should not call this, but if they do, return empty or throw error
+    // For now, let's allow any authenticated user to fetch rooms for the Select components in shift forms.
+    // The creation/edit/delete of rooms will be strictly admin-only.
+  }
+  return getRoomsDB();
+}
 
-    
+export async function addManagedRoom(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const user = await getCurrentUserMock();
+  if (user?.role !== 'admin') return { type: 'error', message: 'No autorizado.' };
+
+  const validatedFields = RoomNameSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!validatedFields.success) {
+    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
+  }
+  const { name } = validatedFields.data;
+  const result = addRoomDB(name);
+
+  if ('error' in result) {
+    return { type: 'error', message: result.error, errors: { name: [result.error] } };
+  }
+  console.log(`Admin ${user.fullName} added new room: ${result.name}`);
+  return { type: 'success', message: 'Sala agregada exitosamente.', room: result };
+}
+
+export async function updateManagedRoom(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const user = await getCurrentUserMock();
+  if (user?.role !== 'admin') return { type: 'error', message: 'No autorizado.' };
+
+  const validatedFields = UpdateRoomNameSchema.safeParse(Object.fromEntries(formData.entries()));
+  if (!validatedFields.success) {
+    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
+  }
+  const { id, name } = validatedFields.data;
+  const result = updateRoomDB(id, name);
+
+  if ('error' in result) {
+    return { type: 'error', message: result.error, errors: { name: [result.error] } };
+  }
+  console.log(`Admin ${user.fullName} updated room ID ${id} to name: ${result.name}`);
+  return { type: 'success', message: 'Sala actualizada exitosamente.', room: result };
+}
+
+export async function deleteManagedRoom(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const user = await getCurrentUserMock();
+  if (user?.role !== 'admin') return { type: 'error', message: 'No autorizado.' };
+
+  const id = formData.get('id') as string;
+  if (!id) return { type: 'error', message: 'ID de sala es requerido.' };
+
+  const roomToDelete = findRoomById(id);
+  if (!roomToDelete) return { type: 'error', message: 'Sala no encontrada.' };
+
+  const success = deleteRoomDB(id);
+  if (success) {
+    console.log(`Admin ${user.fullName} deleted room: ${roomToDelete.name} (ID: ${id})`);
+    // Consider: Add logic to check if room is in use by active/future shifts.
+    // For now, we just log.
+    const shiftsUsingRoom = getAllShiftsDB().filter(shift => shift.area === roomToDelete.name && (shift.status === 'pending' || shift.status === 'accepted')).length;
+    if (shiftsUsingRoom > 0) {
+        console.warn(`Warning: Room "${roomToDelete.name}" was deleted but is still associated with ${shiftsUsingRoom} active/pending shift(s). Their 'area' field will retain this name unless manually updated.`);
+    }
+    return { type: 'success', message: 'Sala eliminada exitosamente.' };
+  }
+  return { type: 'error', message: 'Error al eliminar la sala.' };
+}

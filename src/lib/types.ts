@@ -21,12 +21,17 @@ export interface Shift {
   theme: string;
   participantCount: number;
   notes?: string;
-  area: string;
+  area: string; // This will now correspond to a managed Room's name
   status: ShiftStatus;
   creatorId: string;
   creatorDni?: string; 
   creatorFullName?: string;
   invitedUserDnis: string[]; 
+}
+
+export interface Room {
+  id: string;
+  name: string;
 }
 
 export interface ActionResponse {
@@ -35,10 +40,13 @@ export interface ActionResponse {
   errors?: Record<string, string[] | undefined>;
   shift?: Shift;
   user?: User;
+  room?: Room;
+  rooms?: Room[];
 }
 
 export interface EditShiftFormProps {
   shift: Shift;
+  availableRooms: Room[];
   onShiftUpdated: () => void;
   setOpen: (open: boolean) => void;
 }

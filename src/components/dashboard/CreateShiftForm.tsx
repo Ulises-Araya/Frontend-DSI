@@ -9,40 +9,41 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { createShift } from "@/lib/actions";
+import { createShift, getManagedRooms } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar as CalendarIcon, PlusCircle, UserPlus, X as IconX, Info } from "lucide-react";
+import { Calendar as CalendarIcon, PlusCircle, UserPlus, X as IconX, Info, Tent } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import { es } from 'date-fns/locale';
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { Room } from "@/lib/types";
 
-// Schema for an individual DNI object in the field array
 const DniObjectSchema = z.object({
   value: z.string().regex(/^\d{7,8}$/, "DNI inválido (7-8 caracteres)"),
 });
 
-const CreateShiftSchema = z.object({
+const CreateShiftFormSchema = z.object({
   date: z.date({ required_error: "Fecha es requerida." }),
   startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato HH:MM requerido"),
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato HH:MM requerido"),
   theme: z.string().min(3, "Temática debe tener al menos 3 caracteres"),
   notes: z.string().optional(),
-  area: z.string().min(3, "Área debe tener al menos 3 caracteres"),
+  area: z.string().min(1, "Debe seleccionar un área/sala."),
   invitedUserDnis: z.array(DniObjectSchema).optional().default([]),
 }).refine(data => {
     const [startH, startM] = data.startTime.split(':').map(Number);
     const [endH, endM] = data.endTime.split(':').map(Number);
+    if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) return false;
     return (startH * 60 + startM) < (endH * 60 + endM);
 }, {
     message: "Hora de fin debe ser posterior a hora de inicio.",
     path: ["endTime"],
 });
 
-
-type CreateShiftFormValues = z.infer<typeof CreateShiftSchema>;
+type CreateShiftFormValues = z.infer<typeof CreateShiftFormSchema>;
 
 interface CreateShiftFormProps {
   onShiftCreated?: () => void;
@@ -51,16 +52,39 @@ interface CreateShiftFormProps {
 
 export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProps) {
   const [state, formAction, isActionPending] = useActionState(createShift, null);
-  const [, startTransition] = useTransition();
   const { toast } = useToast();
+  const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(true);
+  const [, startTransition] = useTransition();
+
+
+  useEffect(() => {
+    async function fetchRooms() {
+      setIsLoadingRooms(true);
+      try {
+        const rooms = await getManagedRooms();
+        setAvailableRooms(rooms);
+      } catch (error) {
+        console.error("Failed to fetch rooms:", error);
+        toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar las salas disponibles." });
+      } finally {
+        setIsLoadingRooms(false);
+      }
+    }
+    if (setOpen) { // Assuming if setOpen is true, the dialog is open
+        fetchRooms();
+    }
+  }, [toast, setOpen]);
+
 
   const form = useForm<CreateShiftFormValues>({
-    resolver: zodResolver(CreateShiftSchema),
+    resolver: zodResolver(CreateShiftFormSchema),
     defaultValues: {
       startTime: "09:00",
       endTime: "10:00",
       notes: "",
       invitedUserDnis: [],
+      area: undefined, // Important to set to undefined for placeholder to show
     },
   });
 
@@ -86,8 +110,6 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
       });
       form.reset();
       setCurrentDniInput("");
-      // invitedDniFields should reset with form.reset(), but ensure it visually clears
-      // For useFieldArray, form.reset() should clear its fields.
       if (onShiftCreated) onShiftCreated();
       if (setOpen) setOpen(false);
     }
@@ -104,13 +126,10 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
       setDniInputError("Este DNI ya ha sido agregado a la lista.");
       return;
     }
-    // Consider adding check against current user's DNI if available
-
     appendInvitedDni({ value: currentDniInput });
     setCurrentDniInput("");
     form.clearErrors("invitedUserDnis"); 
   };
-
 
   const onSubmit = (values: CreateShiftFormValues) => {
     const formData = new FormData();
@@ -119,7 +138,7 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
     formData.append("endTime", values.endTime);
     formData.append("theme", values.theme);
     if (values.notes) formData.append("notes", values.notes);
-    formData.append("area", values.area);
+    formData.append("area", values.area); // area is now from Select
     
     const dnisAsString = values.invitedUserDnis.map(item => item.value).join(',');
     if (dnisAsString) {
@@ -185,13 +204,32 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
 
         <div>
           <Label htmlFor="area">Área / Sala</Label>
-          <Input id="area" {...form.register("area")} placeholder="Ej: Sala de Estudio 3, Laboratorio de Electrónica" className="mt-1"/>
-          {form.formState.errors.area && <p className="text-sm text-destructive mt-1">{form.formState.errors.area.message}</p>}
-          {state?.errors?.area && <p className="text-sm text-destructive mt-1">{state.errors.area[0]}</p>}
+           <Select
+                value={form.watch("area")}
+                onValueChange={(value) => form.setValue("area", value)}
+                disabled={isLoadingRooms}
+            >
+                <SelectTrigger id="area" className="mt-1 bg-background/70">
+                    <SelectValue placeholder={isLoadingRooms ? "Cargando salas..." : "Seleccionar área/sala"} />
+                </SelectTrigger>
+                <SelectContent>
+                    {availableRooms.length > 0 ? availableRooms.map(room => (
+                        <SelectItem key={room.id} value={room.name}>{room.name}</SelectItem>
+                    )) : (
+                        <SelectItem value="no-rooms" disabled>No hay salas disponibles</SelectItem>
+                    )}
+                </SelectContent>
+            </Select>
+            {form.formState.errors.area && <p className="text-sm text-destructive mt-1">{form.formState.errors.area.message}</p>}
+            {state?.errors?.area && <p className="text-sm text-destructive mt-1">{state.errors.area[0]}</p>}
+             <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                <Tent className="w-3 h-3 flex-shrink-0" />
+                Las salas son gestionadas por administradores.
+            </p>
         </div>
         
         <div>
-          <Label htmlFor="currentDniInput">Invitar Usuarios por DNI</Label>
+          <Label htmlFor="currentDniInput">Invitar Usuarios por DNI (Opcional)</Label>
           <div className="flex items-start gap-2 mt-1">
             <div className="flex-grow">
               <Input
@@ -217,7 +255,6 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
           {form.formState.errors.invitedUserDnis?.map((error, index) => (
              error?.value?.message && <p key={index} className="text-sm text-destructive mt-1">{error.value.message}</p>
           ))}
-
 
           {invitedDniFields.length > 0 && (
             <div className="mt-3 space-y-1.5">
@@ -251,12 +288,11 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
           {form.formState.errors.notes && <p className="text-sm text-destructive mt-1">{form.formState.errors.notes.message}</p>}
         </div>
 
-        <Button type="submit" className="w-full group" disabled={isActionPending}>
-          {isActionPending ? "Creando..." : "Crear Turno"}
+        <Button type="submit" className="w-full group" disabled={isActionPending || isLoadingRooms}>
+          {isActionPending ? "Creando..." : (isLoadingRooms ? "Cargando salas..." : "Crear Turno")}
           <PlusCircle className="w-4 h-4 ml-2 opacity-70 group-hover:opacity-100 transition-opacity" />
         </Button>
       </form>
     </ScrollArea>
   );
 }
-

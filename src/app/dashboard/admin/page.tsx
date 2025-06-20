@@ -2,38 +2,54 @@
 "use client";
 
 import { useEffect, useState, useMemo } from 'react';
-import type { Shift, ShiftStatus, User } from '@/lib/types';
-import { getAllShiftsAdmin, getCurrentUserMock } from '@/lib/actions';
+import type { Shift, ShiftStatus, User, Room } from '@/lib/types';
+import { getAllShiftsAdmin, getCurrentUserMock, getManagedRooms } from '@/lib/actions';
 import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
-import { Search, FilterX, ShieldCheck } from 'lucide-react';
+import { Search, FilterX, ShieldCheck, RefreshCw } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
+import { useToast } from '@/hooks/use-toast';
 
 export default function AdminDashboardPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [allShifts, setAllShifts] = useState<Shift[]>([]);
+  const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<ShiftStatus | 'all'>('all');
-  const [filterArea, setFilterArea] = useState('');
+  const [filterArea, setFilterArea] = useState<string>('all'); // Changed to string, 'all' for no filter
+  const { toast } = useToast();
 
   async function loadAdminData() {
     setIsLoading(true);
-    const [user, fetchedShifts] = await Promise.all([
-      getCurrentUserMock(),
-      getAllShiftsAdmin()
-    ]);
-    setCurrentUser(user);
-    setAllShifts(fetchedShifts);
-    setIsLoading(false);
+    try {
+        const [user, fetchedShifts, fetchedRooms] = await Promise.all([
+        getCurrentUserMock(),
+        getAllShiftsAdmin(),
+        getManagedRooms()
+        ]);
+        setCurrentUser(user);
+        setAllShifts(fetchedShifts);
+        setAvailableRooms(fetchedRooms);
+    } catch (error) {
+        console.error("Error loading admin data:", error);
+        toast({
+            variant: "destructive",
+            title: "Error de Carga",
+            description: "No se pudieron cargar los datos del panel de administración."
+        });
+    } finally {
+        setIsLoading(false);
+    }
   }
 
   useEffect(() => {
     loadAdminData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
 
@@ -46,21 +62,17 @@ export default function AdminDashboardPage() {
          shift.theme.toLowerCase().includes(searchTermLower));
       
       const matchesStatus = filterStatus === 'all' || shift.status === filterStatus;
-      const matchesArea = filterArea === '' || shift.area.toLowerCase().includes(filterArea.toLowerCase());
+      // Ensure filterArea matches exact room name or 'all' for no filter
+      const matchesArea = filterArea === 'all' || shift.area === filterArea;
 
       return matchesSearch && matchesStatus && matchesArea;
     });
   }, [allShifts, searchTerm, filterStatus, filterArea]);
-
-  const uniqueAreas = useMemo(() => {
-    const areas = new Set(allShifts.map(shift => shift.area));
-    return Array.from(areas);
-  }, [allShifts]);
   
   const clearFilters = () => {
     setSearchTerm('');
     setFilterStatus('all');
-    setFilterArea('');
+    setFilterArea('all');
   }
 
   return (
@@ -70,6 +82,9 @@ export default function AdminDashboardPage() {
           <ShieldCheck className="w-10 h-10 mr-3" />
           Panel de Administración
         </h1>
+        <Button onClick={loadAdminData} variant="outline" size="icon" aria-label="Refrescar datos" disabled={isLoading}>
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
 
       <Card className="bg-card/70 backdrop-blur-sm border-primary/20">
@@ -78,7 +93,7 @@ export default function AdminDashboardPage() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
           <div className="space-y-1">
-            <label htmlFor="searchTerm" className="text-sm font-medium text-muted-foreground">Buscar (Usuario, DNI, Temática)</label>
+            <Label htmlFor="searchTerm" className="text-sm font-medium text-muted-foreground">Buscar (Usuario, DNI, Temática)</Label>
             <Input
               id="searchTerm"
               placeholder="Escribe para buscar..."
@@ -88,7 +103,7 @@ export default function AdminDashboardPage() {
             />
           </div>
           <div className="space-y-1">
-            <label htmlFor="filterStatus" className="text-sm font-medium text-muted-foreground">Estado</label>
+            <Label htmlFor="filterStatus" className="text-sm font-medium text-muted-foreground">Estado</Label>
             <Select value={filterStatus} onValueChange={(value) => setFilterStatus(value as ShiftStatus | 'all')}>
               <SelectTrigger id="filterStatus" className="bg-background/70">
                 <SelectValue placeholder="Todos los estados" />
@@ -102,15 +117,15 @@ export default function AdminDashboardPage() {
             </Select>
           </div>
           <div className="space-y-1">
-            <label htmlFor="filterArea" className="text-sm font-medium text-muted-foreground">Área</label>
-             <Select value={filterArea} onValueChange={(value) => setFilterArea(value === 'all' ? '' : value)}>
+            <Label htmlFor="filterArea" className="text-sm font-medium text-muted-foreground">Área</Label>
+             <Select value={filterArea} onValueChange={(value) => setFilterArea(value)}>
               <SelectTrigger id="filterArea" className="bg-background/70">
                 <SelectValue placeholder="Todas las áreas" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas las Áreas</SelectItem>
-                {uniqueAreas.map(area => (
-                  <SelectItem key={area} value={area}>{area}</SelectItem>
+                {availableRooms.map(room => (
+                  <SelectItem key={room.id} value={room.name}>{room.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

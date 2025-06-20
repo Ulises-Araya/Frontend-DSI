@@ -7,7 +7,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { logoutUser, getCurrentUserMock } from '@/lib/actions';
 import { useEffect, useState } from 'react';
 import type { User } from '@/lib/types';
-import { LogOut, Settings, UserCircle, LayoutDashboard, MailCheck } from 'lucide-react';
+import { LogOut, Settings, UserCircle, LayoutDashboard, MailCheck, Tent } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
   DropdownMenu,
@@ -35,15 +35,13 @@ export function DashboardHeader() {
   }, [router]);
 
 
-  // Effect to update user state if it changes globally (e.g., after profile update)
-  // This is a bit of a trick for mock state. In a real app with a proper auth provider, this might be handled by the provider.
   useEffect(() => {
     const interval = setInterval(async () => {
       const potentiallyUpdatedUser = await getCurrentUserMock();
       if (JSON.stringify(user) !== JSON.stringify(potentiallyUpdatedUser)) {
         setUser(potentiallyUpdatedUser);
       }
-    }, 2000); // Check every 2 seconds
+    }, 2000); 
     return () => clearInterval(interval);
   }, [user]);
 
@@ -102,6 +100,12 @@ export function DashboardHeader() {
                   <DropdownMenuItem onClick={() => router.push('/dashboard/user/invited-shifts')}>
                     <MailCheck className="mr-2 h-4 w-4" />
                     <span>Mis Invitaciones</span>
+                  </DropdownMenuItem>
+                )}
+                {user.role === 'admin' && (
+                  <DropdownMenuItem onClick={() => router.push('/dashboard/admin/rooms')}>
+                    <Tent className="mr-2 h-4 w-4" />
+                    <span>Gestionar Salas</span>
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={() => router.push('/dashboard/settings')}>

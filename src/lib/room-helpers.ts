@@ -1,0 +1,67 @@
+
+'use server';
+import type { Room } from './types';
+
+// In-memory store for rooms
+export let roomsDB: Room[] = [
+  { id: 'room1', name: 'Sala de Estudio 1' },
+  { id: 'room2', name: 'Laboratorio A' },
+  { id: 'room3', name: 'Aula Magna' },
+  { id: 'room4', name: 'Sala Virtual B' },
+  { id: 'room5', name: 'Biblioteca - Zona Silenciosa' },
+];
+
+export function getRoomsDB(): Room[] {
+  return [...roomsDB].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function findRoomById(id: string): Room | undefined {
+  return roomsDB.find(room => room.id === id);
+}
+
+export function findRoomByName(name: string): Room | undefined {
+  return roomsDB.find(room => room.name.toLowerCase() === name.toLowerCase());
+}
+
+export function addRoomDB(name: string): Room | { error: string } {
+  if (findRoomByName(name)) {
+    return { error: 'Ya existe una sala con este nombre.' };
+  }
+  const newRoom: Room = {
+    id: `room${Date.now()}${Math.random().toString(16).slice(2)}`,
+    name: name.trim(),
+  };
+  roomsDB.push(newRoom);
+  return newRoom;
+}
+
+export function updateRoomDB(id: string, newName: string): Room | { error: string } {
+  const existingRoomWithName = findRoomByName(newName);
+  if (existingRoomWithName && existingRoomWithName.id !== id) {
+    return { error: 'Ya existe otra sala con este nuevo nombre.' };
+  }
+
+  const roomIndex = roomsDB.findIndex(room => room.id === id);
+  if (roomIndex === -1) {
+    return { error: 'Sala no encontrada.' };
+  }
+  
+  const oldName = roomsDB[roomIndex].name;
+  roomsDB[roomIndex].name = newName.trim();
+  
+  // Note: In a real app, you might want to update shift.area for shifts that used the oldName.
+  // For this mock, existing shifts will retain the old name if it was changed.
+  // This could be an advanced feature later.
+  console.log(`Room name changed from "${oldName}" to "${newName}". Shifts using the old name are not automatically updated in this mock version.`);
+
+  return roomsDB[roomIndex];
+}
+
+export function deleteRoomDB(id: string): boolean {
+  const initialLength = roomsDB.length;
+  roomsDB = roomsDB.filter(room => room.id !== id);
+  // Note: In a real app, check if the room is in use by shifts before deleting,
+  // or handle how shifts are affected (e.g., set area to null, prompt for reassign).
+  // For this mock, shifts will retain the area name as a string.
+  return roomsDB.length < initialLength;
+}

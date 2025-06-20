@@ -9,15 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { updateShift } from "@/lib/actions";
+import { updateShift } from "@/lib/actions"; // getManagedRooms removed as it's passed via prop
 import { useToast } from "@/hooks/use-toast";
-import { Calendar as CalendarIcon, Save } from "lucide-react";
+import { Calendar as CalendarIcon, Save, Tent } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format, parseISO } from "date-fns";
 import { es } from 'date-fns/locale';
-import type { EditShiftFormProps } from "@/lib/types";
+import type { EditShiftFormProps, Room } from "@/lib/types";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const UpdateShiftFormSchema = z.object({
   shiftId: z.string(),
@@ -26,10 +27,11 @@ const UpdateShiftFormSchema = z.object({
   endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato HH:MM requerido"),
   theme: z.string().min(3, "Temática debe tener al menos 3 caracteres"),
   notes: z.string().optional(),
-  area: z.string().min(3, "Área debe tener al menos 3 caracteres"),
+  area: z.string().min(1, "Debe seleccionar un área/sala."), // Area must be selected
 }).refine(data => {
     const [startH, startM] = data.startTime.split(':').map(Number);
     const [endH, endM] = data.endTime.split(':').map(Number);
+    if (isNaN(startH) || isNaN(startM) || isNaN(endH) || isNaN(endM)) return false;
     return (startH * 60 + startM) < (endH * 60 + endM);
 }, {
     message: "Hora de fin debe ser posterior a hora de inicio.",
@@ -38,7 +40,7 @@ const UpdateShiftFormSchema = z.object({
 
 type UpdateShiftFormValues = z.infer<typeof UpdateShiftFormSchema>;
 
-export function EditShiftForm({ shift, onShiftUpdated, setOpen }: EditShiftFormProps) {
+export function EditShiftForm({ shift, availableRooms, onShiftUpdated, setOpen }: EditShiftFormProps) {
   const [state, formAction, isActionPending] = useActionState(updateShift, null);
   const [, startTransition] = useTransition();
   const { toast } = useToast();
@@ -55,6 +57,19 @@ export function EditShiftForm({ shift, onShiftUpdated, setOpen }: EditShiftFormP
       area: shift.area,
     },
   });
+
+  useEffect(() => {
+    // Reset form if shift prop changes (e.g. opening dialog for different shift)
+    form.reset({
+      shiftId: shift.id,
+      date: parseISO(shift.date),
+      startTime: shift.startTime,
+      endTime: shift.endTime,
+      theme: shift.theme,
+      notes: shift.notes || "",
+      area: shift.area,
+    });
+  }, [shift, form]);
 
   useEffect(() => {
     if (state?.type === 'error') {
@@ -81,7 +96,7 @@ export function EditShiftForm({ shift, onShiftUpdated, setOpen }: EditShiftFormP
     formData.append("endTime", values.endTime);
     formData.append("theme", values.theme); 
     if (values.notes) formData.append("notes", values.notes);
-    formData.append("area", values.area);
+    formData.append("area", values.area); // Area is now from Select
     
     startTransition(() => {
       formAction(formData);
@@ -143,9 +158,28 @@ export function EditShiftForm({ shift, onShiftUpdated, setOpen }: EditShiftFormP
 
         <div>
           <Label htmlFor="area">Área / Sala</Label>
-          <Input id="area" {...form.register("area")} placeholder="Ej: Sala de Estudio 3" className="mt-1"/>
-          {form.formState.errors.area && <p className="text-sm text-destructive mt-1">{form.formState.errors.area.message}</p>}
-          {state?.errors?.area && <p className="text-sm text-destructive mt-1">{state.errors.area[0]}</p>}
+           <Select
+                value={form.watch("area")}
+                onValueChange={(value) => form.setValue("area", value)}
+                disabled={!availableRooms || availableRooms.length === 0}
+            >
+                <SelectTrigger id="area" className="mt-1 bg-background/70">
+                    <SelectValue placeholder={(!availableRooms || availableRooms.length === 0) ? "No hay salas disponibles" : "Seleccionar área/sala"} />
+                </SelectTrigger>
+                <SelectContent>
+                    {availableRooms && availableRooms.length > 0 ? availableRooms.map(room => (
+                        <SelectItem key={room.id} value={room.name}>{room.name}</SelectItem>
+                    )) : (
+                        <SelectItem value="no-rooms" disabled>No hay salas configuradas</SelectItem>
+                    )}
+                </SelectContent>
+            </Select>
+            {form.formState.errors.area && <p className="text-sm text-destructive mt-1">{form.formState.errors.area.message}</p>}
+            {state?.errors?.area && <p className="text-sm text-destructive mt-1">{state.errors.area[0]}</p>}
+            <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                <Tent className="w-3 h-3 flex-shrink-0" />
+                Las salas son gestionadas por administradores.
+            </p>
         </div>
         
         <div>
@@ -154,7 +188,11 @@ export function EditShiftForm({ shift, onShiftUpdated, setOpen }: EditShiftFormP
           {form.formState.errors.notes && <p className="text-sm text-destructive mt-1">{form.formState.errors.notes.message}</p>}
         </div>
 
-        <Button type="submit" className="w-full group" disabled={isActionPending}>
+        <p className="text-xs text-muted-foreground">
+            Los usuarios invitados no pueden ser modificados después de crear el turno.
+        </p>
+
+        <Button type="submit" className="w-full group" disabled={isActionPending || !availableRooms || availableRooms.length === 0}>
           {isActionPending ? "Guardando..." : "Guardar Cambios"}
           <Save className="w-4 h-4 ml-2 opacity-70 group-hover:opacity-100 transition-opacity" />
         </Button>

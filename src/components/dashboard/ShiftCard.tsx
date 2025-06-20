@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { Shift, ShiftStatus, UserRole } from '@/lib/types';
+import type { Shift, ShiftStatus, UserRole, Room } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -32,7 +32,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { updateShiftStatus, respondToShiftInvitation, cancelShift } from '@/lib/actions';
+import { updateShiftStatus, respondToShiftInvitation, cancelShift, getManagedRooms } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { EditShiftForm } from './EditShiftForm';
@@ -50,6 +50,8 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
   const { toast } = useToast();
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(false);
   
   const [invitationActionState, invitationFormAction, isInvitationActionPending] = useActionState(respondToShiftInvitation, null);
   const [cancelActionState, cancelFormAction, isCancelActionPending] = useActionState(cancelShift, null);
@@ -118,7 +120,6 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
     }
   }, [cancelActionState, toast, onShiftUpdate]);
 
-
   const getStatusVariant = (status: ShiftStatus): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
       case 'accepted': return 'default'; 
@@ -136,8 +137,7 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
     currentUserRole === 'user' && 
     (shift.status === 'pending' || shift.status === 'accepted');
 
-  const canAdminEditShift = 
-    currentUserRole === 'admin'; // Admins can edit regardless of status
+  const canAdminEditShift = currentUserRole === 'admin'; 
 
   const canEditShift = canUserEditShift || canAdminEditShift;
 
@@ -145,6 +145,19 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
     isCreator &&
     currentUserRole === 'user' &&
     (shift.status === 'pending' || shift.status === 'accepted');
+
+  const openEditModal = async () => {
+    setIsLoadingRooms(true);
+    try {
+      const rooms = await getManagedRooms();
+      setAvailableRooms(rooms);
+      setIsEditModalOpen(true);
+    } catch (error) {
+      toast({ variant: "destructive", title: "Error", description: "No se pudieron cargar las salas para editar." });
+    } finally {
+      setIsLoadingRooms(false);
+    }
+  };
 
 
   return (
@@ -229,8 +242,9 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
           {canEditShift && (
             <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="flex-1 sm:flex-none">
-                  <Edit className="w-4 h-4 mr-1" /> Editar
+                 <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={openEditModal} disabled={isLoadingRooms}>
+                  {isLoadingRooms ? <RefreshCw className="w-4 h-4 mr-1 animate-spin" /> : <Edit className="w-4 h-4 mr-1" />}
+                  {isLoadingRooms ? 'Cargando...' : 'Editar'}
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[480px] bg-card border-primary/30">
@@ -238,14 +252,21 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
                   <DialogTitle className="font-headline text-2xl text-primary">Editar Turno</DialogTitle>
                   <DialogDescription className="text-muted-foreground">Modifica los detalles de este turno.</DialogDescription>
                 </DialogHeader>
-                <EditShiftForm 
-                  shift={shift} 
-                  onShiftUpdated={() => { 
-                    if(onShiftUpdate) onShiftUpdate(); 
-                    setIsEditModalOpen(false); 
-                  }} 
-                  setOpen={setIsEditModalOpen} 
-                />
+                {!isLoadingRooms && availableRooms.length > 0 ? (
+                    <EditShiftForm 
+                    shift={shift} 
+                    availableRooms={availableRooms}
+                    onShiftUpdated={() => { 
+                        if(onShiftUpdate) onShiftUpdate(); 
+                        setIsEditModalOpen(false); 
+                    }} 
+                    setOpen={setIsEditModalOpen} 
+                    />
+                ) : isLoadingRooms ? (
+                    <p className="text-center py-4">Cargando salas disponibles...</p>
+                ) : (
+                     <p className="text-center py-4 text-destructive">No hay salas disponibles para seleccionar. Contacte a un administrador.</p>
+                )}
               </DialogContent>
             </Dialog>
           )}

@@ -5,7 +5,7 @@ import type { Shift, ShiftStatus, UserRole } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, Clock, Users, Edit, UserCircle, MapPin, MessageSquare, CheckCircle, XCircle, UserPlus, LogOut } from 'lucide-react';
+import { CalendarDays, Clock, Users, Edit, UserCircle, MapPin, MessageSquare, CheckCircle, XCircle, UserPlus, LogOut, Trash2 } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -21,7 +21,18 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { updateShiftStatus, respondToShiftInvitation } from '@/lib/actions';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { updateShiftStatus, respondToShiftInvitation, cancelShift } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { EditShiftForm } from './EditShiftForm';
@@ -41,6 +52,7 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
   const [invitationActionState, invitationFormAction, isInvitationActionPending] = useActionState(respondToShiftInvitation, null);
+  const [cancelActionState, cancelFormAction, isCancelActionPending] = useActionState(cancelShift, null);
   const [, startTransition] = useTransition();
 
 
@@ -65,6 +77,14 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
       invitationFormAction(formData);
     });
   };
+
+  const handleUserCancelShift = () => {
+    const formData = new FormData();
+    formData.append('shiftId', shift.id);
+    startTransition(() => {
+      cancelFormAction(formData);
+    });
+  };
   
   useEffect(() => {
     if (invitationActionState?.type === 'success') {
@@ -82,6 +102,22 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
     }
   }, [invitationActionState, toast, onShiftUpdate]);
 
+  useEffect(() => {
+    if (cancelActionState?.type === 'success') {
+      toast({
+        title: "Turno Cancelado",
+        description: cancelActionState.message,
+      });
+      if (onShiftUpdate) onShiftUpdate();
+    } else if (cancelActionState?.type === 'error') {
+      toast({
+        variant: "destructive",
+        title: "Error al cancelar",
+        description: cancelActionState.message,
+      });
+    }
+  }, [cancelActionState, toast, onShiftUpdate]);
+
 
   const getStatusVariant = (status: ShiftStatus): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
@@ -95,9 +131,20 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
   const isCreator = shift.creatorId === currentUserId;
   const isInvited = shift.invitedUserDnis.includes(currentUserDni) && !isCreator;
   
-  const canEditShift = 
-    (currentUserRole === 'admin') || 
-    (isCreator && (shift.status === 'pending' || shift.status === 'accepted'));
+  const canUserEditShift = 
+    isCreator && 
+    currentUserRole === 'user' && 
+    (shift.status === 'pending' || shift.status === 'accepted');
+
+  const canAdminEditShift = 
+    currentUserRole === 'admin'; // Admins can edit regardless of status
+
+  const canEditShift = canUserEditShift || canAdminEditShift;
+
+  const canUserCancelShift =
+    isCreator &&
+    currentUserRole === 'user' &&
+    (shift.status === 'pending' || shift.status === 'accepted');
 
 
   return (
@@ -202,6 +249,30 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
               </DialogContent>
             </Dialog>
           )}
+
+          {canUserCancelShift && (
+             <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm" className="flex-1 sm:flex-none">
+                  <Trash2 className="w-4 h-4 mr-1" /> Cancelar
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Esta acción cancelará el turno "{shift.theme}". Esta acción no se puede deshacer.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cerrar</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleUserCancelShift} disabled={isCancelActionPending}>
+                    {isCancelActionPending ? "Cancelando..." : "Sí, Cancelar Turno"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
       
           {isInvited && currentUserRole === 'user' && (shift.status === 'pending' || shift.status === 'accepted') && (
             <>
@@ -224,13 +295,14 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
           )}
         </div>
         
-        {!canEditShift && 
+        {!canEditShift && !canUserCancelShift &&
          !(isInvited && currentUserRole === 'user' && (shift.status === 'pending' || shift.status === 'accepted')) &&
          !(currentUserRole === 'admin') &&
-          <div className="h-9 w-full sm:hidden"></div>
+          <div className="h-9 w-full sm:hidden"></div> 
         }
 
       </CardFooter>
     </Card>
   );
 }
+

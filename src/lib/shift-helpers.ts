@@ -168,3 +168,13 @@ export function updateShiftDetailsDB(
   };
   return populateCreatorDetails(shiftsDB[shiftIndex]);
 }
+
+export function cancelShiftDB(shiftId: string): Shift | undefined {
+  const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
+  if (shiftIndex > -1) {
+    shiftsDB[shiftIndex].status = 'cancelled';
+    return populateCreatorDetails(shiftsDB[shiftIndex]);
+  }
+  return undefined;
+}
+

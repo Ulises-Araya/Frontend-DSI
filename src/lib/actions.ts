@@ -19,7 +19,8 @@ import {
   inviteUserToShiftDB,
   acceptShiftInvitationDB,
   rejectShiftInvitationDB,
-  updateShiftDetailsDB
+  updateShiftDetailsDB,
+  cancelShiftDB
 } from './shift-helpers';
 import type { Shift, ShiftStatus, User, ActionResponse } from './types';
 
@@ -310,6 +311,9 @@ export async function updateShift(prevState: ActionResponse | null, formData: Fo
   if (user.role !== 'admin' && shiftToUpdate.creatorId !== user.id) {
     return { type: 'error', message: 'No tienes permiso para editar este turno.' };
   }
+   if (user.role === 'user' && shiftToUpdate.creatorId === user.id && shiftToUpdate.status === 'cancelled') {
+    return { type: 'error', message: 'No puedes editar un turno cancelado.' };
+  }
   
   const result = updateShiftDetailsDB(shiftId, {
     date: editableData.date,
@@ -325,3 +329,33 @@ export async function updateShift(prevState: ActionResponse | null, formData: Fo
   }
   return { type: 'success', message: 'Turno actualizado exitosamente.', shift: result };
 }
+
+export async function cancelShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const user = await getCurrentUserMock();
+  if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
+
+  const shiftId = formData.get('shiftId') as string;
+  if (!shiftId) return { type: 'error', message: 'ID de turno no proporcionado.' };
+  
+  const shiftToCancel = getAllShiftsDB().find(s => s.id === shiftId);
+  if (!shiftToCancel) return { type: 'error', message: 'Turno no encontrado.' };
+
+  if (user.role === 'admin') {
+     return { type: 'error', message: 'Los administradores deben usar el cambio de estado para cancelar.' };
+  }
+
+  if (shiftToCancel.creatorId !== user.id) {
+    return { type: 'error', message: 'No tienes permiso para cancelar este turno.' };
+  }
+
+  if (shiftToCancel.status === 'cancelled') {
+    return { type: 'error', message: 'El turno ya está cancelado.' };
+  }
+  
+  const cancelledShift = cancelShiftDB(shiftId);
+  if (cancelledShift) {
+    return { type: 'success', message: 'Turno cancelado exitosamente.', shift: cancelledShift };
+  }
+  return { type: 'error', message: 'Error al cancelar el turno.' };
+}
+

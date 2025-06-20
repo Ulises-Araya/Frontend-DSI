@@ -2,13 +2,13 @@
 export type UserRole = 'user' | 'admin';
 
 export interface User {
-  id: string; // En el backend es INTEGER, pero se manejará como string en el frontend.
+  id: string; 
   dni: string;
-  fullName: string; // Corresponde a 'nombre' en el backend
+  fullName: string; 
   email: string;
-  password?: string; // Solo para envío, no se almacena en frontend post-login
-  role: UserRole;     // Corresponde a 'rol' en el backend
-  profilePictureUrl?: string | null; // Frontend-only concept for now
+  password?: string; 
+  role: UserRole;     
+  profilePictureUrl?: string | null; 
 }
 
 export type ShiftStatus = 'pending' | 'accepted' | 'cancelled';
@@ -39,7 +39,7 @@ export interface ActionResponse {
   message: string;
   errors?: Record<string, string[] | undefined>;
   shift?: Shift;
-  user?: User; // Puede contener datos del usuario actualizados o logueados
+  user?: User; 
   room?: Room;
   rooms?: Room[];
 }
@@ -53,14 +53,16 @@ export interface EditShiftFormProps {
 
 declare global {
   // eslint-disable-next-line no-var
-  var mockPasswordResetTokens: Record<string, { token: string, expires: number }>;
+  // var mockPasswordResetTokens: Record<string, { token: string, expires: number }>; // Ya no se usa
   // eslint-disable-next-line no-var
-  var mockLastGeneratedToken: { dni: string; token: string } | null;
+  // var mockLastGeneratedToken: { dni: string; token: string } | null; // Reemplazado por backendResetTokenInfo
+  // eslint-disable-next-line no-var
+  var backendResetTokenInfo: { dni: string; token: string } | null; // Para pasar el token real del backend a la UI
   // eslint-disable-next-line no-var
   var mockSession: { 
     currentUserId: string | null; 
     currentUserRole: UserRole | null; 
     currentUserDni: string | null;
-    token?: string | null; // Para almacenar el JWT
+    token?: string | null; 
   } | undefined;
 }

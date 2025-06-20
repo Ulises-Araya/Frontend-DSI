@@ -14,7 +14,7 @@ import { requestPasswordReset } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { MailQuestion, ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { ActionResponse } from "@/lib/types"; // Ensure this type allows for additional properties like mockLastGeneratedToken
+import type { ActionResponse } from "@/lib/types";
 
 const ForgotPasswordSchema = z.object({
   dni: z.string().min(1, "DNI es requerido"),
@@ -47,11 +47,11 @@ export function ForgotPasswordForm() {
         title: "Solicitud Enviada",
         description: state.message,
       });
-      // For mock environment, redirect if token was "sent"
-      if (globalThis.mockLastGeneratedToken?.dni && globalThis.mockLastGeneratedToken?.token) {
-        const { dni, token } = globalThis.mockLastGeneratedToken;
+      // Para el entorno con backend, el token real se pasa a través de globalThis.backendResetTokenInfo
+      if (globalThis.backendResetTokenInfo?.dni && globalThis.backendResetTokenInfo?.token) {
+        const { dni, token } = globalThis.backendResetTokenInfo;
         router.push(`/reset-password?dni=${encodeURIComponent(dni)}&token=${encodeURIComponent(token)}`);
-        globalThis.mockLastGeneratedToken = null; // Clear after use
+        globalThis.backendResetTokenInfo = null; // Limpiar después de usar
       }
       form.reset();
     }

@@ -1,6 +1,6 @@
 
 import type { Shift, ShiftStatus, User } from './types';
-import { usersDB, findUserByDni } from './auth-helpers';
+// import { usersDB, findUserByDni } from './auth-helpers'; // Removed this line
 
 // In-memory store for shifts
 export let shiftsDB: Shift[] = [
@@ -53,26 +53,27 @@ export let shiftsDB: Shift[] = [
 
 // Helper to ensure creator details are populated
 const populateCreatorDetails = (shift: Shift): Shift => {
-  if (!shift.creatorFullName || !shift.creatorDni) {
-    const creator = usersDB.find(u => u.id === shift.creatorId);
-    return {
-      ...shift,
-      creatorDni: creator?.dni || shift.creatorDni || 'N/A',
-      creatorFullName: creator?.fullName || shift.creatorFullName || 'Desconocido',
-    };
-  }
-  return shift;
+  // The mock shiftsDB now consistently includes creatorDni and creatorFullName.
+  // This function can ensure defaults if they were somehow missing.
+  return {
+    ...shift,
+    creatorDni: shift.creatorDni || 'DNI Desconocido',
+    creatorFullName: shift.creatorFullName || 'Nombre Desconocido',
+  };
 };
 
 
 export function getShiftsByUserId(userId: string): Shift[] {
-  const user = usersDB.find(u => u.id === userId);
-  if (!user) return [];
-  
+  // Need to find the user's DNI to filter invited shifts if the backend doesn't do this.
+  // For now, this part relies on the frontend's knowledge of the user's DNI passed to it.
+  // This function might need more info or adjustment if integrated with a backend for shifts.
+  // Assuming user object with DNI is available or passed if necessary.
+  const userDni = globalThis.mockSession?.currentUserDni; // Example of getting current user's DNI
+
   return shiftsDB
     .map(populateCreatorDetails)
     .filter(shift => 
-      shift.creatorId === userId || shift.invitedUserDnis.includes(user.dni)
+      shift.creatorId === userId || (userDni && shift.invitedUserDnis.includes(userDni))
     );
 }
 
@@ -83,7 +84,7 @@ export function getAllShifts(): Shift[] {
 export function addShift(newShiftData: Omit<Shift, 'id' | 'status' | 'creatorFullName' | 'creatorDni'>, creator: User): Shift {
   const shift: Shift = {
     ...newShiftData,
-    id: `s${shiftsDB.length + 1}`,
+    id: `s${shiftsDB.length + 1}${Date.now()}`, // Ensure more unique ID
     status: 'pending',
     creatorDni: creator.dni,
     creatorFullName: creator.fullName,
@@ -105,8 +106,8 @@ export function inviteUserToShiftDB(shiftId: string, userDniToInvite: string): S
   const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
   if (shiftIndex === -1) return { error: 'Shift not found' };
 
-  const userToInvite = usersDB.find(u => u.dni === userDniToInvite);
-  if (!userToInvite) return { error: 'User to invite not found' };
+  // In a real scenario, we'd check if userDniToInvite exists in the backend.
+  // For this mock, we assume the DNI is valid if provided.
   
   if (shiftsDB[shiftIndex].invitedUserDnis.includes(userDniToInvite)) {
     return { error: 'User already invited' };
@@ -137,11 +138,14 @@ export function rejectShiftInvitationDB(shiftId: string, rejectingUserDni: strin
   if (shiftIndex === -1) return { error: 'Shift not found' };
 
   const shift = shiftsDB[shiftIndex];
+  // Check if user was actually invited before attempting to remove
   if (!shift.invitedUserDnis.includes(rejectingUserDni)) {
-    // This case might not be strictly an error if the user is "opting out" after being accepted
-    // but for consistency, we check if they were on the list.
-    // return { error: 'User was not invited to this shift or has already responded.' };
+     // If the user is not on the list, it might mean they already declined or were removed.
+     // Depending on desired behavior, this could be an error or a silent success.
+     // For now, let's just return the shift as is, or you could return an error:
+     // return { error: 'User not found in invitation list.' };
   }
+
 
   shift.invitedUserDnis = shift.invitedUserDnis.filter(dni => dni !== rejectingUserDni);
   shift.participantCount = 1 + shift.invitedUserDnis.length;
@@ -177,4 +181,3 @@ export function cancelShiftDB(shiftId: string): Shift | undefined {
   }
   return undefined;
 }
-

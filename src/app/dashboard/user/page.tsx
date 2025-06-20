@@ -7,7 +7,7 @@ import { getUserShifts, getCurrentUserMock } from '@/lib/actions';
 import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { CreateShiftForm } from '@/components/dashboard/CreateShiftForm';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, CalendarDays, Archive, MailCheck, ArrowRight, BookOpen, History } from 'lucide-react';
+import { PlusCircle, CalendarDays, Archive, MailCheck, ArrowRight, BookOpen } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -23,7 +23,7 @@ import Link from 'next/link';
 
 export default function UserDashboardPage() {
   const [user, setUser] = useState<User | null>(null);
-  const [allUserShifts, setAllUserShifts] = useState<Shift[]>([]);
+  const [userCreatedShifts, setUserCreatedShifts] = useState<Shift[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -32,8 +32,9 @@ export default function UserDashboardPage() {
     const fetchedUser = await getCurrentUserMock();
     setUser(fetchedUser);
     if (fetchedUser) {
-      const fetchedAllUserShifts = await getUserShifts(); // Fetches created and invited shifts
-      setAllUserShifts(fetchedAllUserShifts);
+      const fetchedShifts = await getUserShifts(); 
+      const created = fetchedShifts.filter(shift => shift.creatorId === fetchedUser.id);
+      setUserCreatedShifts(created.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
     }
     setIsLoading(false);
   }
@@ -48,33 +49,26 @@ export default function UserDashboardPage() {
     return d;
   }, []);
 
-  const myUpcomingCreatedShifts = useMemo(() => {
-    if (!user) return [];
-    return allUserShifts
-      .filter(s => 
-        s.creatorId === user.id &&
-        (s.status === 'pending' || s.status === 'accepted') &&
-        new Date(s.date + 'T00:00:00Z') >= todayForCompare // Ensure UTC comparison if dates are stored as YYYY-MM-DD
-      )
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Ascending by date
-  }, [allUserShifts, user, todayForCompare]);
+  const upcomingCreatedShifts = useMemo(() => {
+    return userCreatedShifts.filter(s => 
+      (s.status === 'pending' || s.status === 'accepted') &&
+      new Date(s.date + 'T00:00:00Z') >= todayForCompare
+    );
+  }, [userCreatedShifts, todayForCompare]);
 
-  const historicalShifts = useMemo(() => {
-    if (!user || !user.dni) return [];
-    return allUserShifts
-      .filter(s => 
-        (s.creatorId === user.id || (s.invitedUserDnis && s.invitedUserDnis.includes(user.dni))) &&
-        (s.status === 'cancelled' || new Date(s.date + 'T00:00:00Z') < todayForCompare)
-      )
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Descending by date
-  }, [allUserShifts, user, todayForCompare]);
+  const pastOrCancelledCreatedShifts = useMemo(() => {
+    return userCreatedShifts.filter(s => 
+      s.status === 'cancelled' || new Date(s.date + 'T00:00:00Z') < todayForCompare
+    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); 
+  }, [userCreatedShifts, todayForCompare]);
 
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl md:text-4xl font-headline text-primary flex items-center">
-          <BookOpen className="w-10 h-10 mr-3" /> Mis Turnos Creados
+          <BookOpen className="w-10 h-10 mr-3" /> 
+          Mis Turnos Creados
         </h1>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
@@ -121,11 +115,11 @@ export default function UserDashboardPage() {
           <section>
             <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
               <CalendarDays className="w-6 h-6 mr-3 text-accent" />
-              Mis Próximos Turnos Creados
+              Próximos Turnos Creados
             </h2>
-            {myUpcomingCreatedShifts.length > 0 ? (
+            {upcomingCreatedShifts.length > 0 ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {myUpcomingCreatedShifts.map(shift => (
+                {upcomingCreatedShifts.map(shift => (
                   user.dni && 
                   <ShiftCard 
                     key={shift.id} 
@@ -148,12 +142,12 @@ export default function UserDashboardPage() {
 
           <section>
             <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
-              <History className="w-6 h-6 mr-3 text-accent" /> {/* Changed icon */}
-              Historial de Turnos
+              <Archive className="w-6 h-6 mr-3 text-accent" />
+              Historial de Turnos Creados
             </h2>
-            {historicalShifts.length > 0 ? (
+            {pastOrCancelledCreatedShifts.length > 0 ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {historicalShifts.map(shift => (
+                {pastOrCancelledCreatedShifts.map(shift => (
                   user.dni &&
                   <ShiftCard 
                     key={shift.id} 
@@ -168,8 +162,8 @@ export default function UserDashboardPage() {
             ) : (
               <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
                  <Image src="https://placehold.co/128x128.png" alt="Empty history illustration" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="archive box empty" />
-                <p className="text-muted-foreground">No tienes turnos en tu historial.</p>
-                <p className="text-sm text-muted-foreground/80">Los turnos pasados o cancelados aparecerán aquí.</p>
+                <p className="text-muted-foreground">No tienes turnos creados en tu historial.</p>
+                <p className="text-sm text-muted-foreground/80">Los turnos pasados o cancelados que hayas creado aparecerán aquí.</p>
               </div>
             )}
           </section>

@@ -191,6 +191,7 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
   }
 
   const newUser = addUser({ dni, email, fullName, password });
+  console.log(`Notification: New user registered - DNI: ${dni}, Email: ${email}`);
   return { type: 'success', message: 'Registro exitoso. Por favor, inicia sesión.', user: newUser };
 }
 
@@ -231,6 +232,12 @@ export async function createShift(prevState: ActionResponse | null, formData: Fo
     invitedUserDnis: uniqueInvitedDnisArray,
     participantCount: participantCount 
   }, user);
+
+  console.log(`Notification: Shift "${newShift.theme}" created by ${user.fullName}.`);
+  if (uniqueInvitedDnisArray.length > 0) {
+    console.log(`Notification: Inform invited users (${uniqueInvitedDnisArray.join(', ')}) about new shift invitation for "${newShift.theme}".`);
+  }
+
   return { type: 'success', message: 'Turno creado exitosamente.', shift: newShift };
 }
 
@@ -247,29 +254,34 @@ export async function getAllShiftsAdmin(): Promise<Shift[]> {
 }
 
 export async function updateShiftStatus(shiftId: string, status: ShiftStatus): Promise<ActionResponse> {
-  const user = await getCurrentUserMock();
-  if (user?.role !== 'admin') return { type: 'error', message: 'No autorizado' };
+  const adminUser = await getCurrentUserMock();
+  if (adminUser?.role !== 'admin') return { type: 'error', message: 'No autorizado' };
+  
   const updatedShift = updateShiftStatusDB(shiftId, status);
   if (updatedShift) {
+    console.log(`Notification: Status of shift "${updatedShift.theme}" (ID: ${shiftId}) changed to "${status}" by admin ${adminUser.fullName}.`);
+    console.log(`Notification: Inform creator (${updatedShift.creatorFullName}) and invited users (${updatedShift.invitedUserDnis.join(', ') || 'none'}) about status change.`);
     return { type: 'success', message: 'Estado actualizado', shift: updatedShift };
   }
   return { type: 'error', message: 'Error al actualizar el turno' };
 }
 
 export async function inviteUserToShift(shiftId: string, userDniToInvite: string): Promise<ActionResponse> {
-   const user = await getCurrentUserMock();
-   if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
+   const invitingUser = await getCurrentUserMock();
+   if (!invitingUser) return { type: 'error', message: 'Usuario no autenticado.' };
 
    const result = inviteUserToShiftDB(shiftId, userDniToInvite);
    if ('error' in result) {
     return { type: 'error', message: result.error };
    }
+   console.log(`Notification: User DNI ${userDniToInvite} invited to shift "${result.theme}" (ID: ${shiftId}) by ${invitingUser.fullName}.`);
+   console.log(`Notification: Send invitation to user DNI ${userDniToInvite}.`);
    return { type: 'success', message: 'Usuario invitado.', shift: result };
 }
 
 export async function respondToShiftInvitation(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const user = await getCurrentUserMock();
-  if (!user || !user.dni) return { type: 'error', message: 'Usuario no autenticado o DNI no encontrado.' };
+  const respondingUser = await getCurrentUserMock();
+  if (!respondingUser || !respondingUser.dni) return { type: 'error', message: 'Usuario no autenticado o DNI no encontrado.' };
 
   const shiftId = formData.get('shiftId') as string;
   const response = formData.get('response') as 'accept' | 'reject';
@@ -280,17 +292,22 @@ export async function respondToShiftInvitation(prevState: ActionResponse | null,
 
   let result;
   if (response === 'accept') {
-    result = acceptShiftInvitationDB(shiftId, user.dni);
+    result = acceptShiftInvitationDB(shiftId, respondingUser.dni);
   } else {
-    result = rejectShiftInvitationDB(shiftId, user.dni);
+    result = rejectShiftInvitationDB(shiftId, respondingUser.dni);
   }
 
   if ('error' in result) {
     return { type: 'error', message: result.error };
   }
   
-  const message = response === 'accept' ? 'Invitación aceptada.' : 'Respuesta actualizada.';
-  return { type: 'success', message, shift: result };
+  const shiftDetails = result; // result is the updated shift object
+  const actionText = response === 'accept' ? 'accepted' : 'declined/left';
+  console.log(`Notification: User ${respondingUser.fullName} ${actionText} invitation to shift "${shiftDetails.theme}" (ID: ${shiftId}).`);
+  console.log(`Notification: Inform creator (${shiftDetails.creatorFullName}) about this response.`);
+  
+  const successMessage = response === 'accept' ? 'Invitación aceptada.' : 'Respuesta actualizada.';
+  return { type: 'success', message: successMessage, shift: shiftDetails };
 }
 
 export async function updateUserProfile(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
@@ -326,6 +343,7 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
   });
 
   if (updatedUser) {
+    console.log(`Notification: User profile for ${updatedUser.fullName} (ID: ${user.id}) updated.`);
     return { type: 'success', message: 'Perfil actualizado exitosamente.', user: updatedUser };
   }
   return { type: 'error', message: 'Error al actualizar el perfil.' };
@@ -347,14 +365,15 @@ export async function changeUserPassword(prevState: ActionResponse | null, formD
 
   const success = updateUserPasswordHelper(user.id, newPassword);
   if (success) {
+    console.log(`Notification: Password changed for user ${user.fullName} (ID: ${user.id}).`);
     return { type: 'success', message: 'Contraseña actualizada exitosamente.' };
   }
   return { type: 'error', message: 'Error al actualizar la contraseña.' };
 }
 
 export async function updateShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const user = await getCurrentUserMock();
-  if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
+  const currentUser = await getCurrentUserMock();
+  if (!currentUser) return { type: 'error', message: 'Usuario no autenticado.' };
   
   const rawFormData = Object.fromEntries(formData.entries());
   const validatedFields = UpdateShiftSchema.safeParse(rawFormData);
@@ -368,11 +387,14 @@ export async function updateShift(prevState: ActionResponse | null, formData: Fo
   const shiftToUpdate = getAllShiftsDB().find(s => s.id === shiftId);
   if (!shiftToUpdate) return { type: 'error', message: 'Turno no encontrado.' };
 
-  if (user.role !== 'admin' && shiftToUpdate.creatorId !== user.id) {
+  const isCreator = shiftToUpdate.creatorId === currentUser.id;
+  const isAdmin = currentUser.role === 'admin';
+
+  if (!isAdmin && !isCreator) {
     return { type: 'error', message: 'No tienes permiso para editar este turno.' };
   }
  
-  if (user.role === 'user' && shiftToUpdate.creatorId === user.id && shiftToUpdate.status === 'cancelled') {
+  if (!isAdmin && isCreator && shiftToUpdate.status === 'cancelled') {
     return { type: 'error', message: 'No puedes editar un turno cancelado.' };
   }
   
@@ -380,7 +402,7 @@ export async function updateShift(prevState: ActionResponse | null, formData: Fo
     date: editableData.date,
     startTime: editableData.startTime,
     endTime: editableData.endTime,
-    theme: editableData.theme,
+    theme: editableData.theme, // Theme is now editable
     notes: editableData.notes,
     area: editableData.area,
   });
@@ -388,7 +410,21 @@ export async function updateShift(prevState: ActionResponse | null, formData: Fo
   if ('error' in result) {
     return { type: 'error', message: result.error };
   }
-  return { type: 'success', message: 'Turno actualizado exitosamente.', shift: result };
+
+  const updatedShift = result;
+  console.log(`Notification: Shift "${updatedShift.theme}" (ID: ${shiftId}) updated by ${currentUser.fullName}.`);
+  // Notify creator (if not the one updating) and all invited users.
+  const partiesToNotify = new Set<string>();
+  if (updatedShift.creatorDni && updatedShift.creatorDni !== currentUser.dni) {
+      partiesToNotify.add(`Creator DNI: ${updatedShift.creatorDni}`);
+  }
+  updatedShift.invitedUserDnis.forEach(dni => partiesToNotify.add(`Invited DNI: ${dni}`));
+  
+  if (partiesToNotify.size > 0) {
+    console.log(`Notification: Inform involved parties (${Array.from(partiesToNotify).join(', ')}) about the update to shift "${updatedShift.theme}".`);
+  }
+
+  return { type: 'success', message: 'Turno actualizado exitosamente.', shift: updatedShift };
 }
 
 export async function cancelShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
@@ -402,6 +438,7 @@ export async function cancelShift(prevState: ActionResponse | null, formData: Fo
   if (!shiftToCancel) return { type: 'error', message: 'Turno no encontrado.' };
 
   if (user.role === 'admin') {
+     // Admins should use updateShiftStatus
      return { type: 'error', message: 'Los administradores deben usar el cambio de estado para cancelar.' };
   }
 
@@ -415,6 +452,10 @@ export async function cancelShift(prevState: ActionResponse | null, formData: Fo
   
   const cancelledShift = cancelShiftDB(shiftId);
   if (cancelledShift) {
+    console.log(`Notification: Shift "${cancelledShift.theme}" (ID: ${shiftId}) cancelled by creator ${user.fullName}.`);
+    if (cancelledShift.invitedUserDnis.length > 0) {
+        console.log(`Notification: Inform invited users (${cancelledShift.invitedUserDnis.join(', ')}) about the cancellation of shift "${cancelledShift.theme}".`);
+    }
     return { type: 'success', message: 'Turno cancelado exitosamente.', shift: cancelledShift };
   }
   return { type: 'error', message: 'Error al cancelar el turno.' };
@@ -438,8 +479,8 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
     return { type: 'error', message: "No se pudo generar el token de restablecimiento. Inténtalo de nuevo." };
   }
   
-  // For mock purposes, store the token to be used by the form to redirect
   globalThis.mockLastGeneratedToken = { dni: user.dni, token };
+  console.log(`Notification: Password reset requested for DNI ${dni}. Mock token: ${token}. (Simulated email sent to ${user.email})`);
 
   return { type: 'success', message: "Si existe una cuenta con este DNI, se ha enviado un (simulado) enlace para restablecer la contraseña." };
 }
@@ -457,7 +498,12 @@ export async function resetPasswordWithToken(prevState: ActionResponse | null, f
 
   const success = updateUserPasswordByDni(dni, newPassword);
   if (success) {
-    redirect('/login?reset=success'); // Add query param to show toast on login page if needed
+    const user = findUserByDni(dni);
+    console.log(`Notification: Password successfully reset for DNI ${dni}. (Simulated confirmation email sent to ${user?.email})`);
+    redirect('/login?reset=success');
   }
   return { type: 'error', message: "No se pudo restablecer la contraseña. Inténtalo de nuevo." };
 }
+
+
+    

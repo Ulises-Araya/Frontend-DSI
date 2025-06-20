@@ -22,7 +22,12 @@ import {
   updateShiftDetailsDB,
   cancelShiftDB
 } from './shift-helpers';
-import type { Shift, ShiftStatus, User, ActionResponse } from './types';
+import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse } from './types';
+
+interface ActionResponse extends BaseActionResponse {
+  user?: User; // Add user to ActionResponse for profile updates
+}
+
 
 const LoginSchema = z.object({
   dni: z.string().min(1, "DNI es requerido"),
@@ -72,10 +77,24 @@ const UpdateShiftSchema = z.object({
 });
 
 
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
 const UpdateProfileSchema = z.object({
   fullName: z.string().min(3, "Nombre completo debe tener al menos 3 caracteres."),
   email: z.string().email("Email inválido."),
+  profilePicture: z
+    .instanceof(File)
+    .optional()
+    .nullable()
+    .refine(file => !file || file.size <= MAX_FILE_SIZE, `El tamaño máximo de la imagen es 5MB.`)
+    .refine(
+      file => !file || ACCEPTED_IMAGE_TYPES.includes(file.type),
+      "Solo se aceptan formatos .jpg, .jpeg, .png y .webp."
+    ),
+  removeProfilePicture: z.string().optional(), // 'true' or undefined
 });
+
 
 const ChangePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Contraseña actual es requerida."),
@@ -142,8 +161,8 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
     return { type: 'error', message: 'Email ya registrado.' };
   }
 
-  addUser({ dni, email, fullName, password });
-  return { type: 'success', message: 'Registro exitoso. Por favor, inicia sesión.' };
+  const newUser = addUser({ dni, email, fullName, password });
+  return { type: 'success', message: 'Registro exitoso. Por favor, inicia sesión.', user: newUser };
 }
 
 export async function getCurrentUserMock(): Promise<User | null> {
@@ -254,7 +273,7 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
   
-  const { fullName, email } = validatedFields.data;
+  const { fullName, email, profilePicture, removeProfilePicture } = validatedFields.data;
 
   if (email !== user.email) {
     const existingUserWithNewEmail = findUserByEmail(email);
@@ -263,10 +282,24 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
     }
   }
   
-  const updatedUser = updateUserDetails(user.id, { fullName, email });
+  let profilePictureUrlToUpdate: string | null | undefined = undefined;
+
+  if (removeProfilePicture === 'true') {
+    profilePictureUrlToUpdate = null;
+  } else if (profilePicture) {
+    // In a real app, upload the file and get a URL. For mock, use a placeholder.
+    profilePictureUrlToUpdate = `https://placehold.co/100x100/7FBC8F/FFFFFF.png?text=✓&unique=${Date.now()}`; // Added unique to force refresh
+  }
+  // If profilePictureUrlToUpdate remains undefined, it means no change to profile picture.
+
+  const updatedUser = updateUserDetails(user.id, { 
+    fullName, 
+    email, 
+    ...(profilePictureUrlToUpdate !== undefined && { profilePictureUrl: profilePictureUrlToUpdate })
+  });
 
   if (updatedUser) {
-    return { type: 'success', message: 'Perfil actualizado exitosamente.' };
+    return { type: 'success', message: 'Perfil actualizado exitosamente.', user: updatedUser };
   }
   return { type: 'error', message: 'Error al actualizar el perfil.' };
 }
@@ -311,7 +344,8 @@ export async function updateShift(prevState: ActionResponse | null, formData: Fo
   if (user.role !== 'admin' && shiftToUpdate.creatorId !== user.id) {
     return { type: 'error', message: 'No tienes permiso para editar este turno.' };
   }
-   if (user.role === 'user' && shiftToUpdate.creatorId === user.id && shiftToUpdate.status === 'cancelled') {
+   // Admins can edit cancelled shifts. Users can only edit if pending/accepted.
+  if (user.role === 'user' && shiftToUpdate.creatorId === user.id && shiftToUpdate.status === 'cancelled') {
     return { type: 'error', message: 'No puedes editar un turno cancelado.' };
   }
   
@@ -341,6 +375,7 @@ export async function cancelShift(prevState: ActionResponse | null, formData: Fo
   if (!shiftToCancel) return { type: 'error', message: 'Turno no encontrado.' };
 
   if (user.role === 'admin') {
+     // Admins use status change, this action is for user-initiated cancellations.
      return { type: 'error', message: 'Los administradores deben usar el cambio de estado para cancelar.' };
   }
 
@@ -358,4 +393,3 @@ export async function cancelShift(prevState: ActionResponse | null, formData: Fo
   }
   return { type: 'error', message: 'Error al cancelar el turno.' };
 }
-

@@ -25,6 +25,10 @@ export default function SettingsPage() {
     loadUser();
   }, []);
 
+  const handleProfileUpdate = (updatedUser: User) => {
+    setUser(updatedUser); // Update local state to reflect changes immediately
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-8">
@@ -38,6 +42,7 @@ export default function SettingsPage() {
             <Skeleton className="h-4 w-2/3" />
           </CardHeader>
           <CardContent className="space-y-4">
+            <Skeleton className="h-20 w-20 rounded-full mb-4" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-1/3" />
@@ -77,11 +82,11 @@ export default function SettingsPage() {
           <UserCog className="w-7 h-7 text-accent" />
           <div>
             <CardTitle className="font-headline text-2xl text-foreground/90">Actualizar Perfil</CardTitle>
-            <CardDescription className="text-muted-foreground">Modifica tu nombre completo y dirección de email.</CardDescription>
+            <CardDescription className="text-muted-foreground">Modifica tu nombre, email y foto de perfil.</CardDescription>
           </div>
         </CardHeader>
         <CardContent>
-          <UpdateProfileForm currentUser={user} />
+          <UpdateProfileForm currentUser={user} onProfileUpdate={handleProfileUpdate} />
         </CardContent>
       </Card>
 

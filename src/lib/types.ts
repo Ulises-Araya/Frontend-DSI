@@ -7,6 +7,7 @@ export interface User {
   email: string;
   password?: string; // Should not be sent to client, but needed for registration/login server-side
   role: UserRole;
+  profilePictureUrl?: string | null;
 }
 
 export type ShiftStatus = 'pending' | 'accepted' | 'cancelled';

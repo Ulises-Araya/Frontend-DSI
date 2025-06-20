@@ -34,6 +34,19 @@ export function DashboardHeader() {
     fetchUser();
   }, [router]);
 
+
+  // Effect to update user state if it changes globally (e.g., after profile update)
+  // This is a bit of a trick for mock state. In a real app with a proper auth provider, this might be handled by the provider.
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const potentiallyUpdatedUser = await getCurrentUserMock();
+      if (JSON.stringify(user) !== JSON.stringify(potentiallyUpdatedUser)) {
+        setUser(potentiallyUpdatedUser);
+      }
+    }, 2000); // Check every 2 seconds
+    return () => clearInterval(interval);
+  }, [user]);
+
   const handleLogout = async () => {
     await logoutUser();
   };
@@ -63,7 +76,7 @@ export function DashboardHeader() {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                   <Avatar className="h-9 w-9 border border-primary/50">
-                    <AvatarImage src={`https://placehold.co/40x40.png?text=${getInitials(user.fullName)}`} alt={user.fullName} data-ai-hint="user avatar" />
+                    <AvatarImage src={user.profilePictureUrl || undefined} alt={user.fullName} data-ai-hint="user avatar" />
                     <AvatarFallback>{getInitials(user.fullName)}</AvatarFallback>
                   </Avatar>
                 </Button>

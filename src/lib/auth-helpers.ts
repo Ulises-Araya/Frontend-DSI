@@ -3,8 +3,8 @@ import type { User, UserRole } from './types';
 
 // In-memory store for users (replace with actual DB in a real app)
 export const usersDB: User[] = [
-  { id: '1', dni: 'admin', fullName: 'Admin User', email: 'admin@example.com', password: 'adminpassword', role: 'admin' },
-  { id: '2', dni: '12345678', fullName: 'Regular User', email: 'user@example.com', password: 'userpassword', role: 'user' },
+  { id: '1', dni: 'admin', fullName: 'Admin User', email: 'admin@example.com', password: 'adminpassword', role: 'admin', profilePictureUrl: null },
+  { id: '2', dni: '12345678', fullName: 'Regular User', email: 'user@example.com', password: 'userpassword', role: 'user', profilePictureUrl: null },
 ];
 
 export function findUserByDni(dni: string): User | undefined {
@@ -20,25 +20,29 @@ export function verifyPassword(passwordInput: string, storedPassword?: string): 
   return passwordInput === storedPassword;
 }
 
-export function addUser(newUser: Omit<User, 'id' | 'role'>): User {
+export function addUser(newUser: Omit<User, 'id' | 'role' | 'profilePictureUrl'>): User {
   const user: User = {
     ...newUser,
     id: String(usersDB.length + 1),
     role: 'user', // Default role
+    profilePictureUrl: null,
   };
   usersDB.push(user);
   return user;
 }
 
-export function updateUserDetails(userId: string, data: { fullName?: string; email?: string }): User | undefined {
+export function updateUserDetails(userId: string, data: { fullName?: string; email?: string; profilePictureUrl?: string | null }): User | undefined {
   const userIndex = usersDB.findIndex(user => user.id === userId);
   if (userIndex === -1) return undefined;
 
-  if (data.fullName) {
+  if (data.fullName !== undefined) {
     usersDB[userIndex].fullName = data.fullName;
   }
-  if (data.email) {
+  if (data.email !== undefined) {
     usersDB[userIndex].email = data.email;
+  }
+  if (data.profilePictureUrl !== undefined) {
+    usersDB[userIndex].profilePictureUrl = data.profilePictureUrl;
   }
   return usersDB[userIndex];
 }

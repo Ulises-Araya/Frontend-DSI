@@ -8,13 +8,13 @@ import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import Image from 'next/image';
-import { Handshake, ArrowLeft, BellRing } from 'lucide-react';
+import { MailCheck, ArrowLeft, Inbox, ListChecks, CalendarX2 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
 export default function InvitedShiftsPage() {
   const [user, setUser] = useState<User | null>(null);
-  const [pendingInvitations, setPendingInvitations] = useState<Shift[]>([]);
+  const [allInvitedShifts, setAllInvitedShifts] = useState<Shift[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   async function loadData() {
@@ -25,10 +25,9 @@ export default function InvitedShiftsPage() {
       const fetchedShifts = await getUserShifts();
       const invites = fetchedShifts.filter(shift => 
         shift.invitedUserDnis.includes(fetchedUser.dni) && 
-        shift.creatorId !== fetchedUser.id &&
-        shift.status === 'pending' // Only show pending invitations for action
+        shift.creatorId !== fetchedUser.id
       ).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setPendingInvitations(invites);
+      setAllInvitedShifts(invites);
     }
     setIsLoading(false);
   }
@@ -37,24 +36,28 @@ export default function InvitedShiftsPage() {
     loadData();
   }, []);
 
+  const pendingInvitations = allInvitedShifts.filter(s => s.status === 'pending');
+  const confirmedInvitations = allInvitedShifts.filter(s => s.status === 'accepted');
+  const cancelledByOrganizerInvitations = allInvitedShifts.filter(s => s.status === 'cancelled');
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl md:text-4xl font-headline text-primary flex items-center">
-          <BellRing className="w-10 h-10 mr-3" />
-          Invitaciones Pendientes
+          <MailCheck className="w-10 h-10 mr-3" />
+          Mis Invitaciones
         </h1>
         <Button variant="outline" asChild>
           <Link href="/dashboard/user">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Volver a Mis Turnos
+            Volver a Mis Turnos Creados
           </Link>
         </Button>
       </div>
 
       {isLoading ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map(i => (
+          {[1, 2, 3, 4, 5, 6].map(i => (
             <Card key={i} className="w-full shadow-lg">
               <CardHeader><Skeleton className="h-8 w-3/4" /></CardHeader>
               <CardContent className="space-y-3">
@@ -68,27 +71,86 @@ export default function InvitedShiftsPage() {
         </div>
       ) : (
         <>
-          {pendingInvitations.length > 0 ? (
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {pendingInvitations.map(shift => (
-                user && user.dni &&
-                <ShiftCard 
-                  key={shift.id} 
-                  shift={shift} 
-                  currentUserRole="user" 
-                  currentUserId={user.id} 
-                  currentUserDni={user.dni}
-                  onShiftUpdate={loadData}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
-              <Image src="https://placehold.co/128x128.png" alt="No pending invitations" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="empty envelope mail" />
-              <p className="text-muted-foreground">No tienes invitaciones pendientes.</p>
-              <p className="text-sm text-muted-foreground/80">Cuando te inviten a un turno y esté pendiente de tu respuesta, aparecerá aquí.</p>
-            </div>
-          )}
+          <section>
+            <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
+              <Inbox className="w-6 h-6 mr-3 text-accent" />
+              Pendientes de Respuesta
+            </h2>
+            {pendingInvitations.length > 0 ? (
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {pendingInvitations.map(shift => (
+                  user && user.dni &&
+                  <ShiftCard 
+                    key={shift.id} 
+                    shift={shift} 
+                    currentUserRole="user" 
+                    currentUserId={user.id} 
+                    currentUserDni={user.dni}
+                    onShiftUpdate={loadData}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
+                <Image src="https://placehold.co/128x128.png" alt="No pending invitations" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="empty envelope mail" />
+                <p className="text-muted-foreground">No tienes invitaciones pendientes de respuesta.</p>
+              </div>
+            )}
+          </section>
+
+          <section>
+            <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
+              <ListChecks className="w-6 h-6 mr-3 text-accent" />
+              Confirmadas (Participando)
+            </h2>
+            {confirmedInvitations.length > 0 ? (
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {confirmedInvitations.map(shift => (
+                  user && user.dni &&
+                  <ShiftCard 
+                    key={shift.id} 
+                    shift={shift} 
+                    currentUserRole="user" 
+                    currentUserId={user.id} 
+                    currentUserDni={user.dni}
+                    onShiftUpdate={loadData}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
+                <Image src="https://placehold.co/128x128.png" alt="No confirmed invitations" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="calendar checkmark" />
+                <p className="text-muted-foreground">No tienes turnos confirmados a los que estés participando como invitado.</p>
+              </div>
+            )}
+          </section>
+          
+          <section>
+            <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
+              <CalendarX2 className="w-6 h-6 mr-3 text-accent" />
+              Canceladas por Organizador
+            </h2>
+            {cancelledByOrganizerInvitations.length > 0 ? (
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {cancelledByOrganizerInvitations.map(shift => (
+                  user && user.dni &&
+                  <ShiftCard 
+                    key={shift.id} 
+                    shift={shift} 
+                    currentUserRole="user" 
+                    currentUserId={user.id} 
+                    currentUserDni={user.dni}
+                    onShiftUpdate={loadData}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
+                <Image src="https://placehold.co/128x128.png" alt="No cancelled invitations" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="calendar cross" />
+                <p className="text-muted-foreground">No hay turnos a los que fuiste invitado que hayan sido cancelados por el organizador.</p>
+              </div>
+            )}
+          </section>
         </>
       )}
     </div>

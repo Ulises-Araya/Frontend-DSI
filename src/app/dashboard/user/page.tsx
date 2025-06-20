@@ -7,7 +7,7 @@ import { getUserShifts, getCurrentUserMock } from '@/lib/actions';
 import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { CreateShiftForm } from '@/components/dashboard/CreateShiftForm';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, CalendarDays, Archive, Handshake, ArrowRight, BookOpen } from 'lucide-react';
+import { PlusCircle, CalendarDays, Archive, MailCheck, ArrowRight, BookOpen } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -23,7 +23,7 @@ import Link from 'next/link';
 
 export default function UserDashboardPage() {
   const [user, setUser] = useState<User | null>(null);
-  const [allUserShifts, setAllUserShifts] = useState<Shift[]>([]);
+  const [createdShifts, setCreatedShifts] = useState<Shift[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
@@ -32,16 +32,17 @@ export default function UserDashboardPage() {
     const fetchedUser = await getCurrentUserMock();
     setUser(fetchedUser);
     if (fetchedUser) {
-      const fetchedShifts = await getUserShifts();
-      // Sort shifts: pending/accepted first, then by date (most recent first)
-      fetchedShifts.sort((a, b) => {
+      const allUserRelatedShifts = await getUserShifts();
+      const userCreated = allUserRelatedShifts.filter(shift => shift.creatorId === fetchedUser.id);
+      
+      userCreated.sort((a, b) => {
         const statusOrder = (status: string) => status === 'pending' || status === 'accepted' ? 0 : 1;
         if (statusOrder(a.status) !== statusOrder(b.status)) {
           return statusOrder(a.status) - statusOrder(b.status);
         }
         return new Date(b.date).getTime() - new Date(a.date).getTime();
       });
-      setAllUserShifts(fetchedShifts);
+      setCreatedShifts(userCreated);
     }
     setIsLoading(false);
   }
@@ -50,14 +51,14 @@ export default function UserDashboardPage() {
     loadData();
   }, []);
   
-  const activeShifts = allUserShifts.filter(s => s.status === 'pending' || s.status === 'accepted');
-  const pastOrCancelledShifts = allUserShifts.filter(s => s.status === 'cancelled');
+  const activeCreatedShifts = createdShifts.filter(s => s.status === 'pending' || s.status === 'accepted');
+  const pastOrCancelledCreatedShifts = createdShifts.filter(s => s.status === 'cancelled');
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl md:text-4xl font-headline text-primary flex items-center">
-          <BookOpen className="w-10 h-10 mr-3" /> Mis Turnos
+          <BookOpen className="w-10 h-10 mr-3" /> Mis Turnos Creados
         </h1>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
@@ -77,8 +78,8 @@ export default function UserDashboardPage() {
           </Dialog>
           <Button variant="outline" asChild className="group w-full sm:w-auto">
             <Link href="/dashboard/user/invited-shifts">
-              <Handshake className="w-5 h-5 mr-2" />
-              Invitaciones Pendientes
+              <MailCheck className="w-5 h-5 mr-2" />
+              Mis Invitaciones
               <ArrowRight className="w-4 h-4 ml-1 opacity-70 group-hover:translate-x-1 transition-transform"/>
             </Link>
           </Button>
@@ -104,12 +105,12 @@ export default function UserDashboardPage() {
           <section>
             <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
               <CalendarDays className="w-6 h-6 mr-3 text-accent" />
-              Turnos Activos (Creados o Invitaciones Aceptadas)
+              Turnos Activos (Creados)
             </h2>
-            {activeShifts.length > 0 ? (
+            {activeCreatedShifts.length > 0 ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {activeShifts.map(shift => (
-                  user && user.dni && // Ensure user and user.dni are available
+                {activeCreatedShifts.map(shift => (
+                  user && user.dni && 
                   <ShiftCard 
                     key={shift.id} 
                     shift={shift} 
@@ -123,20 +124,20 @@ export default function UserDashboardPage() {
             ) : (
               <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
                 <Image src="https://placehold.co/128x128.png" alt="Empty state illustration" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="empty calendar" />
-                <p className="text-muted-foreground">No tienes turnos activos.</p>
-                <p className="text-sm text-muted-foreground/80">Crea uno nuevo o espera invitaciones.</p>
+                <p className="text-muted-foreground">No tienes turnos activos creados.</p>
+                <p className="text-sm text-muted-foreground/80">Crea uno nuevo para empezar.</p>
               </div>
             )}
           </section>
 
-          {pastOrCancelledShifts.length > 0 && (
+          {pastOrCancelledCreatedShifts.length > 0 && (
             <section>
               <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
                 <Archive className="w-6 h-6 mr-3 text-accent" />
-                Turnos Pasados o Cancelados
+                Turnos Pasados o Cancelados (Creados)
               </h2>
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {pastOrCancelledShifts.map(shift => (
+                {pastOrCancelledCreatedShifts.map(shift => (
                   user && user.dni &&
                   <ShiftCard 
                     key={shift.id} 

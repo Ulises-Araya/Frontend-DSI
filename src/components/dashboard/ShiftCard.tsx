@@ -5,7 +5,7 @@ import type { Shift, ShiftStatus, UserRole, ActionResponse } from '@/lib/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, Clock, Users, Edit, Trash2, UserCircle, MapPin, MessageSquare, CheckCircle, XCircle, UserPlus, Info } from 'lucide-react';
+import { CalendarDays, Clock, Users, Edit, Trash2, UserCircle, MapPin, MessageSquare, CheckCircle, XCircle, UserPlus, LogOut } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -22,14 +22,13 @@ interface ShiftCardProps {
   currentUserRole: UserRole;
   currentUserId: string;
   currentUserDni: string;
-  onShiftUpdate?: () => void; // Callback for any update (status change, invitation response)
+  onShiftUpdate?: () => void; 
 }
 
 export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDni, onShiftUpdate }: ShiftCardProps) {
   const { toast } = useToast();
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   
-  // For invitation response
   const [invitationActionState, invitationFormAction, isInvitationActionPending] = useActionState(respondToShiftInvitation, null);
   const [, startTransition] = useTransition();
 
@@ -84,6 +83,60 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
 
   const isCreator = shift.creatorId === currentUserId;
   const isInvited = shift.invitedUserDnis.includes(currentUserDni) && !isCreator;
+
+  const renderUserActions = () => {
+    if (isCreator && currentUserRole === 'user' && (shift.status === 'pending' || shift.status === 'accepted')) {
+      return (
+        <div className="flex gap-2 mt-2 sm:mt-0">
+          <Button variant="outline" size="sm" disabled>
+            <Edit className="w-4 h-4 mr-1" /> Editar (Próximamente)
+          </Button>
+          <Button variant="destructive" size="sm" disabled>
+            <Trash2 className="w-4 h-4 mr-1" /> Cancelar (Próximamente)
+          </Button>
+        </div>
+      );
+    }
+    
+    if (isInvited && currentUserRole === 'user') {
+      if (shift.status === 'pending') {
+        return (
+          <div className="flex w-full sm:w-auto justify-around sm:justify-start gap-2">
+            <Button 
+              size="sm" 
+              onClick={() => handleInvitationResponse('accept')} 
+              disabled={isInvitationActionPending}
+              className="bg-primary hover:bg-primary/80 flex-1 sm:flex-none"
+            >
+              <CheckCircle className="w-4 h-4 mr-1" /> Aceptar
+            </Button>
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              onClick={() => handleInvitationResponse('reject')}
+              disabled={isInvitationActionPending}
+              className="flex-1 sm:flex-none"
+            >
+              <XCircle className="w-4 h-4 mr-1" /> Rechazar
+            </Button>
+          </div>
+        );
+      } else if (shift.status === 'accepted') {
+         return (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => handleInvitationResponse('reject')}
+            disabled={isInvitationActionPending}
+            className="border-destructive text-destructive hover:bg-destructive/10 flex-1 sm:flex-none"
+          >
+            <LogOut className="w-4 h-4 mr-1" /> No Asistir
+          </Button>
+        );
+      }
+    }
+    return <div className="h-9"></div>; // Placeholder for consistent height
+  };
 
   return (
     <Card className="w-full shadow-lg hover:shadow-xl transition-shadow duration-300 bg-card/80 backdrop-blur-sm border-primary/20 hover:border-primary/40">
@@ -155,39 +208,8 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
               </SelectContent>
             </Select>
           </div>
-        ) : isInvited && shift.status === 'pending' && currentUserRole === 'user' ? (
-          <div className="flex w-full sm:w-auto justify-around sm:justify-start gap-2">
-            <Button 
-              size="sm" 
-              onClick={() => handleInvitationResponse('accept')} 
-              disabled={isInvitationActionPending}
-              className="bg-primary hover:bg-primary/80 flex-1 sm:flex-none"
-            >
-              <CheckCircle className="w-4 h-4 mr-1" /> Aceptar
-            </Button>
-            <Button 
-              variant="destructive" 
-              size="sm" 
-              onClick={() => handleInvitationResponse('reject')}
-              disabled={isInvitationActionPending}
-              className="flex-1 sm:flex-none"
-            >
-              <XCircle className="w-4 h-4 mr-1" /> Rechazar
-            </Button>
-          </div>
         ) : (
-          <div className="h-9"></div> // Placeholder to maintain height if no admin/invitation actions
-        )}
-        
-        {(isCreator && currentUserRole === 'user' && (shift.status === 'pending' || shift.status === 'accepted')) && (
-          <div className="flex gap-2 mt-2 sm:mt-0">
-            <Button variant="outline" size="sm" disabled>
-              <Edit className="w-4 h-4 mr-1" /> Editar (Próximamente)
-            </Button>
-            <Button variant="destructive" size="sm" disabled> {/* This should be a cancel *user* action, not admin */}
-              <Trash2 className="w-4 h-4 mr-1" /> Cancelar (Próximamente)
-            </Button>
-          </div>
+          renderUserActions()
         )}
       </CardFooter>
     </Card>

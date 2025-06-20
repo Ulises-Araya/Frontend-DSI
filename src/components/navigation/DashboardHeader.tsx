@@ -7,7 +7,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { logoutUser, getCurrentUserMock } from '@/lib/actions';
 import { useEffect, useState } from 'react';
 import type { User } from '@/lib/types';
-import { LogOut, Settings, UserCircle, LayoutDashboard, Handshake } from 'lucide-react';
+import { LogOut, Settings, UserCircle, LayoutDashboard, MailCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import {
   DropdownMenu,
@@ -80,12 +80,12 @@ export function DashboardHeader() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => router.push(user.role === 'admin' ? '/dashboard/admin' : '/dashboard/user')}>
                   <LayoutDashboard className="mr-2 h-4 w-4" />
-                  <span>{user.role === 'admin' ? 'Panel Admin' : 'Mis Turnos'}</span>
+                  <span>{user.role === 'admin' ? 'Panel Admin' : 'Mis Turnos Creados'}</span>
                 </DropdownMenuItem>
                 {user.role === 'user' && (
                   <DropdownMenuItem onClick={() => router.push('/dashboard/user/invited-shifts')}>
-                    <Handshake className="mr-2 h-4 w-4" />
-                    <span>Invitaciones Pendientes</span>
+                    <MailCheck className="mr-2 h-4 w-4" />
+                    <span>Mis Invitaciones</span>
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={() => router.push('/dashboard/settings')}>

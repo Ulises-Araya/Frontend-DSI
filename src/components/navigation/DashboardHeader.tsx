@@ -67,7 +67,10 @@ export function DashboardHeader() {
              <path d="M16.5 10.5l-3-1.73"></path>
              <path d="M7.5 10.5l3-1.73"></path>
           </svg>
-          <span className="font-headline text-lg font-bold text-primary">ArborVitae Scheduler</span>
+          <div>
+            <span className="font-headline text-lg font-bold text-primary">ArborVitae Scheduler</span>
+            <span className="block font-body text-xs text-muted-foreground hidden sm:block">El planificador natural de tus turnos.</span>
+          </div>
         </Link>
         
         <div className="flex items-center space-x-3">

@@ -6,6 +6,7 @@ import type { Shift, ShiftStatus, User, Room } from '@/lib/types';
 import { getAllShiftsAdmin, getCurrentUserMock, getManagedRooms } from '@/lib/actions';
 import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
@@ -155,6 +156,7 @@ export default function AdminDashboardPage() {
       ) : filteredShifts.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {filteredShifts.map(shift => (
+            currentUser && currentUser.dni && currentUser.id &&
             <ShiftCard 
               key={shift.id} 
               shift={shift} 

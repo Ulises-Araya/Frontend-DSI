@@ -33,3 +33,10 @@ export interface ActionResponse {
   errors?: Record<string, string[] | undefined>;
   shift?: Shift;
 }
+
+// Props for the EditShiftForm
+export interface EditShiftFormProps {
+  shift: Shift;
+  onShiftUpdated: () => void;
+  setOpen: (open: boolean) => void;
+}

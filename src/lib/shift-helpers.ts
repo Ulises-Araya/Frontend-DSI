@@ -1,6 +1,6 @@
 
 import type { Shift, ShiftStatus, User } from './types';
-import { usersDB } from './auth-helpers';
+import { usersDB, findUserByDni } from './auth-helpers';
 
 // In-memory store for shifts
 export let shiftsDB: Shift[] = [
@@ -25,7 +25,7 @@ export let shiftsDB: Shift[] = [
     startTime: '14:00', 
     endTime: '15:30', 
     theme: 'Proyecto Final - Software', 
-    participantCount: 3, 
+    participantCount: 1, 
     notes: 'Definir alcance y tecnologías.', 
     area: 'Laboratorio 3', 
     status: 'pending', 
@@ -116,6 +116,7 @@ export function inviteUserToShiftDB(shiftId: string, userDniToInvite: string): S
   }
 
   shiftsDB[shiftIndex].invitedUserDnis.push(userDniToInvite);
+  shiftsDB[shiftIndex].participantCount = 1 + shiftsDB[shiftIndex].invitedUserDnis.length;
   return populateCreatorDetails(shiftsDB[shiftIndex]);
 }
 
@@ -127,11 +128,6 @@ export function acceptShiftInvitationDB(shiftId: string, acceptingUserDni: strin
   if (!shift.invitedUserDnis.includes(acceptingUserDni)) {
     return { error: 'User was not invited to this shift or has already responded.' };
   }
-  // For "accept", we don't change the data model much with the current setup.
-  // The user remains in invitedUserDnis. The UI will handle removing accept/reject buttons.
-  // If we had a per-user invitation status, we'd update it here.
-  // We could change the shift status to 'accepted' if this is the first acceptance,
-  // but that's a larger logic change. For now, an admin still needs to accept the shift itself.
   return populateCreatorDetails(shift);
 }
 
@@ -145,5 +141,41 @@ export function rejectShiftInvitationDB(shiftId: string, rejectingUserDni: strin
   }
 
   shift.invitedUserDnis = shift.invitedUserDnis.filter(dni => dni !== rejectingUserDni);
+  shift.participantCount = 1 + shift.invitedUserDnis.length;
   return populateCreatorDetails(shift);
+}
+
+export function cancelShiftDB(shiftId: string): Shift | { error: string } {
+  const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
+  if (shiftIndex === -1) return { error: 'Turno no encontrado.' };
+  shiftsDB[shiftIndex].status = 'cancelled';
+  // Conceptual: Notify involved users
+  return populateCreatorDetails(shiftsDB[shiftIndex]);
+}
+
+export function updateShiftDetailsDB(
+  shiftId: string, 
+  data: Omit<Shift, 'id' | 'creatorId' | 'creatorDni' | 'creatorFullName' | 'status' | 'participantCount'>
+): Shift | { error: string } {
+  const shiftIndex = shiftsDB.findIndex(s => s.id === shiftId);
+  if (shiftIndex === -1) return { error: 'Turno no encontrado.' };
+
+  const currentShift = shiftsDB[shiftIndex];
+  
+  const invitedDnisArray = data.invitedUserDnis.map(d => d.trim()).filter(d => d && d !== currentShift.creatorDni);
+  const uniqueInvitedDnisArray = Array.from(new Set(invitedDnisArray)); 
+
+  if (uniqueInvitedDnisArray.some(dni => !findUserByDni(dni))) {
+    return { error: 'Uno o más DNIs invitados no corresponden a usuarios registrados.' };
+  }
+
+  shiftsDB[shiftIndex] = {
+    ...currentShift,
+    ...data,
+    invitedUserDnis: uniqueInvitedDnisArray,
+    participantCount: 1 + uniqueInvitedDnisArray.length,
+    // Status is not changed by this function directly, only by updateShiftStatus or cancelShiftDB
+  };
+  // Conceptual: Notify involved users if admin made the change
+  return populateCreatorDetails(shiftsDB[shiftIndex]);
 }

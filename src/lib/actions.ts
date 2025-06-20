@@ -18,7 +18,9 @@ import {
   updateShiftStatus as updateShiftStatusDB, 
   inviteUserToShiftDB,
   acceptShiftInvitationDB,
-  rejectShiftInvitationDB
+  rejectShiftInvitationDB,
+  cancelShiftDB,
+  updateShiftDetailsDB
 } from './shift-helpers';
 import type { Shift, ShiftStatus, User, ActionResponse } from './types';
 
@@ -39,6 +41,21 @@ const RegisterSchema = z.object({
 });
 
 const CreateShiftSchema = z.object({
+  date: z.string().min(1, "Fecha es requerida"), 
+  startTime: z.string().min(1, "Hora de inicio es requerida"),
+  endTime: z.string().min(1, "Hora de fin es requerida"),
+  theme: z.string().min(1, "Temática es requerida"),
+  notes: z.string().optional(),
+  area: z.string().min(1, "Área es requerida"),
+  invitedUserDnis: z.string().optional().refine(val => { 
+    if (!val || val.trim() === "") return true;
+    const dnis = val.split(',').map(d => d.trim());
+    return dnis.every(dni => /^\d{7,8}$/.test(dni));
+  }, "Uno o más DNIs invitados no son válidos (7-8 dígitos)."),
+});
+
+const UpdateShiftSchema = z.object({
+  shiftId: z.string().min(1, "ID de turno es requerido."),
   date: z.string().min(1, "Fecha es requerida"), 
   startTime: z.string().min(1, "Hora de inicio es requerida"),
   endTime: z.string().min(1, "Hora de fin es requerida"),
@@ -221,7 +238,7 @@ export async function respondToShiftInvitation(prevState: ActionResponse | null,
     return { type: 'error', message: result.error };
   }
   
-  const message = response === 'accept' ? 'Invitación aceptada.' : 'Invitación rechazada.';
+  const message = response === 'accept' ? 'Invitación aceptada.' : 'Respuesta actualizada.';
   return { type: 'success', message, shift: result };
 }
 
@@ -236,7 +253,6 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
   
   const { fullName, email } = validatedFields.data;
 
-  // Check if email is changing and if the new email is already taken by another user
   if (email !== user.email) {
     const existingUserWithNewEmail = findUserByEmail(email);
     if (existingUserWithNewEmail && existingUserWithNewEmail.id !== user.id) {
@@ -247,12 +263,6 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
   const updatedUser = updateUserDetails(user.id, { fullName, email });
 
   if (updatedUser) {
-    // Optionally update mockSession if user details changed affect it, e.g., fullName
-    if (globalThis.mockSession && globalThis.mockSession.currentUserId === updatedUser.id) {
-        // For now, we only store id, role, dni in session, so no session update needed here.
-        // If session stored fullName, we'd update it:
-        // globalThis.mockSession.currentUserFullName = updatedUser.fullName;
-    }
     return { type: 'success', message: 'Perfil actualizado exitosamente.' };
   }
   return { type: 'error', message: 'Error al actualizar el perfil.' };
@@ -277,4 +287,65 @@ export async function changeUserPassword(prevState: ActionResponse | null, formD
     return { type: 'success', message: 'Contraseña actualizada exitosamente.' };
   }
   return { type: 'error', message: 'Error al actualizar la contraseña.' };
+}
+
+export async function cancelShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const user = await getCurrentUserMock();
+  if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
+
+  const shiftId = formData.get('shiftId') as string;
+  if (!shiftId) return { type: 'error', message: 'ID de turno no proporcionado.' };
+
+  const shiftToCancel = getAllShiftsDB().find(s => s.id === shiftId);
+  if (!shiftToCancel) return { type: 'error', message: 'Turno no encontrado.' };
+
+  if (user.role !== 'admin' && shiftToCancel.creatorId !== user.id) {
+    return { type: 'error', message: 'No tienes permiso para cancelar este turno.' };
+  }
+
+  const result = cancelShiftDB(shiftId);
+  if ('error' in result) {
+    return { type: 'error', message: result.error };
+  }
+  return { type: 'success', message: 'Turno cancelado exitosamente.', shift: result };
+}
+
+export async function updateShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const user = await getCurrentUserMock();
+  if (!user) return { type: 'error', message: 'Usuario no autenticado.' };
+  
+  const rawFormData = Object.fromEntries(formData.entries());
+  const validatedFields = UpdateShiftSchema.safeParse(rawFormData);
+
+  if (!validatedFields.success) {
+    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
+  }
+  
+  const { shiftId, ...updateData } = validatedFields.data;
+
+  const shiftToUpdate = getAllShiftsDB().find(s => s.id === shiftId);
+  if (!shiftToUpdate) return { type: 'error', message: 'Turno no encontrado.' };
+
+  if (user.role !== 'admin' && shiftToUpdate.creatorId !== user.id) {
+    return { type: 'error', message: 'No tienes permiso para editar este turno.' };
+  }
+  
+  const invitedDnisArray = updateData.invitedUserDnis?.split(',').map(d => d.trim()).filter(Boolean) || [];
+
+  const result = updateShiftDetailsDB(shiftId, {
+    date: updateData.date,
+    startTime: updateData.startTime,
+    endTime: updateData.endTime,
+    theme: updateData.theme,
+    notes: updateData.notes,
+    area: updateData.area,
+    invitedUserDnis: invitedDnisArray,
+    // participantCount is derived in updateShiftDetailsDB
+  });
+
+  if ('error' in result) {
+    return { type: 'error', message: result.error };
+  }
+  // Conceptual: Notify users if admin edited and user was not the admin.
+  return { type: 'success', message: 'Turno actualizado exitosamente.', shift: result };
 }

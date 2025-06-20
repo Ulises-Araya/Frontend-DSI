@@ -7,7 +7,7 @@ import { getUserShifts, getCurrentUserMock } from '@/lib/actions';
 import { ShiftCard } from '@/components/dashboard/ShiftCard';
 import { CreateShiftForm } from '@/components/dashboard/CreateShiftForm';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, CalendarDays, Archive, MailCheck, ArrowRight, BookOpen } from 'lucide-react';
+import { PlusCircle, CalendarClock, Archive, MailCheck, ArrowRight, BookOpen } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -34,7 +34,7 @@ export default function UserDashboardPage() {
     if (fetchedUser) {
       const fetchedShifts = await getUserShifts(); 
       const created = fetchedShifts.filter(shift => shift.creatorId === fetchedUser.id);
-      setUserCreatedShifts(created.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+      setUserCreatedShifts(created); // Keep original sort or sort later
     }
     setIsLoading(false);
   }
@@ -49,17 +49,21 @@ export default function UserDashboardPage() {
     return d;
   }, []);
 
-  const upcomingCreatedShifts = useMemo(() => {
-    return userCreatedShifts.filter(s => 
-      (s.status === 'pending' || s.status === 'accepted') &&
-      new Date(s.date + 'T00:00:00Z') >= todayForCompare
-    );
+  const turnosActuales = useMemo(() => {
+    return userCreatedShifts
+      .filter(s => 
+        new Date(s.date + 'T00:00:00Z') <= todayForCompare && 
+        (s.status === 'pending' || s.status === 'accepted')
+      )
+      .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Ascending
   }, [userCreatedShifts, todayForCompare]);
 
-  const pastOrCancelledCreatedShifts = useMemo(() => {
-    return userCreatedShifts.filter(s => 
-      s.status === 'cancelled' || new Date(s.date + 'T00:00:00Z') < todayForCompare
-    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); 
+  const historialDeTurnosCreados = useMemo(() => {
+    return userCreatedShifts
+      .filter(s => 
+        new Date(s.date + 'T00:00:00Z') > todayForCompare || s.status === 'cancelled'
+      )
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Descending
   }, [userCreatedShifts, todayForCompare]);
 
 
@@ -114,12 +118,12 @@ export default function UserDashboardPage() {
         <>
           <section>
             <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
-              <CalendarDays className="w-6 h-6 mr-3 text-accent" />
-              Próximos Turnos Creados
+              <CalendarClock className="w-6 h-6 mr-3 text-accent" /> {/* Updated Icon */}
+              Turnos Actuales
             </h2>
-            {upcomingCreatedShifts.length > 0 ? (
+            {turnosActuales.length > 0 ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {upcomingCreatedShifts.map(shift => (
+                {turnosActuales.map(shift => (
                   user.dni && 
                   <ShiftCard 
                     key={shift.id} 
@@ -134,8 +138,8 @@ export default function UserDashboardPage() {
             ) : (
               <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
                 <Image src="https://placehold.co/128x128.png" alt="Empty state illustration" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="empty calendar" />
-                <p className="text-muted-foreground">No tienes próximos turnos creados.</p>
-                <p className="text-sm text-muted-foreground/80">Crea uno nuevo para empezar.</p>
+                <p className="text-muted-foreground">No tienes turnos actuales creados.</p>
+                <p className="text-sm text-muted-foreground/80">Los turnos activos para hoy o fechas pasadas aparecerán aquí. Crea uno nuevo para empezar.</p>
               </div>
             )}
           </section>
@@ -145,9 +149,9 @@ export default function UserDashboardPage() {
               <Archive className="w-6 h-6 mr-3 text-accent" />
               Historial de Turnos Creados
             </h2>
-            {pastOrCancelledCreatedShifts.length > 0 ? (
+            {historialDeTurnosCreados.length > 0 ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {pastOrCancelledCreatedShifts.map(shift => (
+                {historialDeTurnosCreados.map(shift => (
                   user.dni &&
                   <ShiftCard 
                     key={shift.id} 
@@ -163,7 +167,7 @@ export default function UserDashboardPage() {
               <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
                  <Image src="https://placehold.co/128x128.png" alt="Empty history illustration" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="archive box empty" />
                 <p className="text-muted-foreground">No tienes turnos creados en tu historial.</p>
-                <p className="text-sm text-muted-foreground/80">Los turnos pasados o cancelados que hayas creado aparecerán aquí.</p>
+                <p className="text-sm text-muted-foreground/80">Los turnos futuros o cancelados que hayas creado aparecerán aquí.</p>
               </div>
             )}
           </section>
@@ -172,3 +176,4 @@ export default function UserDashboardPage() {
     </div>
   );
 }
+

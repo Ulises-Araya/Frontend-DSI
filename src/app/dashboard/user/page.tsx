@@ -34,7 +34,7 @@ export default function UserDashboardPage() {
     if (fetchedUser) {
       const fetchedShifts = await getUserShifts(); 
       const created = fetchedShifts.filter(shift => shift.creatorId === fetchedUser.id);
-      setUserCreatedShifts(created); // Keep original sort or sort later
+      setUserCreatedShifts(created);
     }
     setIsLoading(false);
   }
@@ -44,25 +44,26 @@ export default function UserDashboardPage() {
   }, []);
   
   const todayForCompare = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+    const now = new Date();
+    // Create a new date object representing the start of today in UTC for consistent comparison
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
   }, []);
 
   const turnosActuales = useMemo(() => {
     return userCreatedShifts
-      .filter(s => 
-        new Date(s.date + 'T00:00:00Z') <= todayForCompare && 
-        (s.status === 'pending' || s.status === 'accepted')
-      )
+      .filter(s => {
+        const shiftDate = new Date(s.date + 'T00:00:00Z'); // Shift date is already UTC midnight
+        return shiftDate >= todayForCompare && (s.status === 'pending' || s.status === 'accepted');
+      })
       .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()); // Ascending
   }, [userCreatedShifts, todayForCompare]);
 
   const historialDeTurnosCreados = useMemo(() => {
     return userCreatedShifts
-      .filter(s => 
-        new Date(s.date + 'T00:00:00Z') > todayForCompare || s.status === 'cancelled'
-      )
+      .filter(s => {
+        const shiftDate = new Date(s.date + 'T00:00:00Z'); // Shift date is already UTC midnight
+        return shiftDate < todayForCompare || s.status === 'cancelled';
+      })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Descending
   }, [userCreatedShifts, todayForCompare]);
 
@@ -118,7 +119,7 @@ export default function UserDashboardPage() {
         <>
           <section>
             <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
-              <CalendarClock className="w-6 h-6 mr-3 text-accent" /> {/* Updated Icon */}
+              <CalendarClock className="w-6 h-6 mr-3 text-accent" />
               Turnos Actuales
             </h2>
             {turnosActuales.length > 0 ? (
@@ -139,7 +140,7 @@ export default function UserDashboardPage() {
               <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
                 <Image src="https://placehold.co/128x128.png" alt="Empty state illustration" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="empty calendar" />
                 <p className="text-muted-foreground">No tienes turnos actuales creados.</p>
-                <p className="text-sm text-muted-foreground/80">Los turnos activos para hoy o fechas pasadas aparecerán aquí. Crea uno nuevo para empezar.</p>
+                <p className="text-sm text-muted-foreground/80">Los turnos activos para hoy o fechas futuras que hayas creado aparecerán aquí.</p>
               </div>
             )}
           </section>
@@ -167,7 +168,7 @@ export default function UserDashboardPage() {
               <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
                  <Image src="https://placehold.co/128x128.png" alt="Empty history illustration" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="archive box empty" />
                 <p className="text-muted-foreground">No tienes turnos creados en tu historial.</p>
-                <p className="text-sm text-muted-foreground/80">Los turnos futuros o cancelados que hayas creado aparecerán aquí.</p>
+                <p className="text-sm text-muted-foreground/80">Los turnos pasados o cancelados que hayas creado aparecerán aquí.</p>
               </div>
             )}
           </section>
@@ -176,4 +177,3 @@ export default function UserDashboardPage() {
     </div>
   );
 }
-

@@ -11,7 +11,7 @@ import {
   acceptShiftInvitationDB,
   rejectShiftInvitationDB,
   updateShiftDetailsDB,
-  cancelShiftDB
+  cancelShiftDB as cancelShiftHelperDB
 } from './shift-helpers';
 import {
   getRoomsDB,
@@ -144,58 +144,17 @@ if (globalThis.backendResetTokenInfo === undefined) {
 }
 
 
-export async function loginUser(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  console.log(`Attempting to login. Backend URL target: ${BACKEND_BASE_URL}/auth/login`); // Línea de depuración
-  const validatedFields = LoginSchema.safeParse(Object.fromEntries(formData.entries()));
-  if (!validatedFields.success) {
-    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
-  }
-  const { dni, password } = validatedFields.data;
-
-  try {
-    const response = await fetch(`${BACKEND_BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dni, password }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return { type: 'error', message: data.error || 'Error al iniciar sesión desde el backend.' };
-    }
-
-    if (globalThis.mockSession) {
-      globalThis.mockSession.currentUserId = data.id.toString();
-      globalThis.mockSession.token = data.token;
-
-      const userDetails = await fetchUserDetailsById(data.id.toString(), data.token);
-      if (userDetails) {
-        globalThis.mockSession.currentUserRole = userDetails.role;
-        globalThis.mockSession.currentUserDni = userDetails.dni;
-      } else {
-         globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null, token: null };
-         return { type: 'error', message: 'Login exitoso pero no se pudieron obtener detalles del usuario.' };
-      }
-    }
-
-    if (globalThis.mockSession?.currentUserRole === 'admin') {
-      redirect('/dashboard/admin');
-    } else {
-      redirect('/dashboard/user');
-    }
-  } catch (error) {
-    console.error('Error en loginUser:', error);
-    return { type: 'error', message: 'Error de conexión con el servidor de autenticación.' };
-  }
-}
-
 async function fetchUserDetailsById(userId: string, token: string): Promise<User | null> {
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${userId}`, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+        console.error(`Error fetching user details: ${response.status} ${response.statusText}`);
+        const errorBody = await response.text();
+        console.error("Error body:", errorBody);
+        return null;
+    }
     const backendUser = await response.json();
     return {
       id: backendUser.id.toString(),
@@ -203,11 +162,100 @@ async function fetchUserDetailsById(userId: string, token: string): Promise<User
       fullName: backendUser.nombre,
       email: backendUser.email,
       role: backendUser.rol as UserRole,
-      profilePictureUrl: null, // El backend no maneja esto
+      profilePictureUrl: null, 
     };
   } catch (error) {
-    console.error("Error fetching user details by ID:", error);
+    console.error("fetchUserDetailsById - Exception:", error);
     return null;
+  }
+}
+
+export async function loginUser(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  console.log(`Attempting to login. Backend URL target: ${BACKEND_BASE_URL}/auth/login`);
+  const validatedFields = LoginSchema.safeParse(Object.fromEntries(formData.entries()));
+
+  if (!validatedFields.success) {
+    return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
+  }
+  const { dni, password } = validatedFields.data;
+
+  let sessionData: { userId: string; token: string; userRole: UserRole | null; userDni: string | null } | null = null;
+  let errorMessage: string | null = null;
+  let fieldErrors: Record<string, string[] | undefined> | undefined = undefined;
+
+  try {
+    const loginResponse = await fetch(`${BACKEND_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dni, password }),
+    });
+
+    const loginData = await loginResponse.json();
+
+    if (!loginResponse.ok) {
+      errorMessage = loginData.error || 'Error al iniciar sesión desde el backend.';
+      // TODO: Consider mapping specific backend errors to frontend fieldErrors if loginData provides them
+    } else {
+      const userId = loginData.id?.toString();
+      const token = loginData.token;
+
+      if (!userId || !token) {
+        errorMessage = 'Respuesta de login inválida desde el backend (faltan ID o token).';
+      } else {
+        // Successfully authenticated with backend, now fetch full user details
+        const userDetails = await fetchUserDetailsById(userId, token);
+        if (userDetails) {
+          sessionData = {
+            userId: userId,
+            token: token,
+            userRole: userDetails.role,
+            userDni: userDetails.dni,
+          };
+        } else {
+          // Login was successful, but couldn't fetch user details. This is a problem.
+          errorMessage = 'Login exitoso pero no se pudieron obtener detalles completos del usuario.';
+        }
+      }
+    }
+  } catch (error: any) {
+    console.error('Error en la comunicación con el backend durante el login:', error);
+    errorMessage = 'Error de conexión con el servidor de autenticación.';
+    if (error.cause?.code === 'ECONNREFUSED') {
+        errorMessage = `No se pudo conectar a ${BACKEND_BASE_URL}. Asegúrate de que el servidor backend esté corriendo y la URL sea correcta.`;
+    }
+  }
+
+  // If there was an error at any point, or sessionData couldn't be fully populated
+  if (errorMessage || !sessionData || !sessionData.userRole) {
+    if (globalThis.mockSession) { // Clear any partial global session state
+        globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null, token: null };
+    }
+    return { 
+      type: 'error', 
+      message: errorMessage || (sessionData && !sessionData.userRole ? 'No se pudo determinar el rol del usuario.' : 'Error desconocido durante el login.'), 
+      errors: fieldErrors 
+    };
+  }
+
+  // If all successful, update global session state and redirect
+  if (globalThis.mockSession) {
+    globalThis.mockSession.currentUserId = sessionData.userId;
+    globalThis.mockSession.token = sessionData.token;
+    globalThis.mockSession.currentUserRole = sessionData.userRole; // userRole is guaranteed non-null here
+    globalThis.mockSession.currentUserDni = sessionData.userDni;
+  }
+
+  if (sessionData.userRole === 'admin') {
+    redirect('/dashboard/admin');
+  } else if (sessionData.userRole === 'user') {
+    redirect('/dashboard/user');
+  } else {
+    // This case should ideally not be reached if userRole is validated above.
+    // Clean up session just in case.
+    if (globalThis.mockSession) {
+        globalThis.mockSession = { currentUserId: null, currentUserRole: null, currentUserDni: null, token: null };
+    }
+    return { type: 'error', message: 'Rol de usuario no reconocido después del login, no se puede redirigir.' };
   }
 }
 
@@ -220,23 +268,22 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
   const { fullName, email, dni, password } = validatedFields.data;
 
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/usuarios`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios`, { // Tu backend usa POST /usuarios (no /api/usuarios/register)
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nombre: fullName, email, dni, password, rol: 'usuario' }), // Asumiendo rol por defecto si no se envía
+      body: JSON.stringify({ nombre: fullName, email, dni, password, rol: 'usuario' }), // rol por defecto
     });
     const data = await response.json();
 
-    if (!response.ok || response.status !== 201) { // Un registro exitoso usualmente devuelve 201 Created
+    if (!response.ok || response.status !== 201) {
       const fieldErrors: Record<string, string[]> = {};
       if (data.error && typeof data.error === 'string') {
         if (data.error.toLowerCase().includes('dni')) fieldErrors.dni = [data.error];
         else if (data.error.toLowerCase().includes('email')) fieldErrors.email = [data.error];
+        else fieldErrors.confirmPassword = [data.error]; // Contraseña o error general
       }
       return { type: 'error', message: data.error || 'Error al registrar desde el backend.', errors: fieldErrors };
     }
-    // Tu backend devuelve un token al registrar, lo cual es bueno.
-    // Por ahora, no hacemos login automático aquí, solo mensaje de éxito.
     return { type: 'success', message: data.mensaje || 'Registro exitoso. Por favor, inicia sesión.' };
   } catch (error) {
     console.error('Error en registerUser:', error);
@@ -249,43 +296,7 @@ export async function getCurrentUser(): Promise<User | null> {
   if (!session?.currentUserId || !session.token) {
     return null;
   }
-
-  try {
-    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${session.currentUserId}`, {
-      headers: {
-        'Authorization': `Bearer ${session.token}`,
-      },
-    });
-
-    if (response.status === 401 || response.status === 403) {
-      console.log("getCurrentUser: Token inválido o expirado. Limpiando sesión.");
-      await logoutUser(); // logoutUser redirige, así que esto detendrá la ejecución aquí.
-      return null; // Necesario para typescript aunque logoutUser redirija.
-    }
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error(`getCurrentUser: Error del backend - Status: ${response.status}, Body: ${errorData}`);
-      return null;
-    }
-
-    const backendUser = await response.json();
-    const frontendUser: User = {
-      id: backendUser.id.toString(),
-      dni: backendUser.dni,
-      fullName: backendUser.nombre,
-      email: backendUser.email,
-      role: backendUser.rol as UserRole,
-      profilePictureUrl: null // El backend no maneja esto
-    };
-    if (globalThis.mockSession) {
-        globalThis.mockSession.currentUserDni = frontendUser.dni;
-        globalThis.mockSession.currentUserRole = frontendUser.role;
-    }
-    return frontendUser;
-  } catch (error) {
-    console.error('Error en getCurrentUser:', error);
-    return null;
-  }
+  return fetchUserDetailsById(session.currentUserId, session.token);
 }
 
 export async function logoutUser() {
@@ -409,7 +420,7 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
 
-  const { fullName, email } = validatedFields.data;
+  const { fullName, email } = validatedFields.data; // profilePicture y removeProfilePicture no se envían al backend
 
   try {
     const backendPayload = {
@@ -430,13 +441,12 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
 
     if (!response.ok) {
         const fieldErrors: Record<string, string[]> = {};
-        if (responseData.error && typeof responseData.error === 'string' && responseData.error.toLowerCase().includes('email_unique')) {
-            fieldErrors.email = ['Este email ya está en uso.'];
-        } else if (responseData.error && typeof responseData.error === 'string' && responseData.error.toLowerCase().includes('usuarios_nombre_key')) {
-           fieldErrors.fullName = ['Este nombre ya está en uso.']; // Ajustar si el error es diferente
-        } else if (responseData.error && typeof responseData.error === 'string' && responseData.error.toLowerCase().includes('usuarios_dni_key')) {
-           // El DNI no se puede cambiar desde este formulario, pero por si acaso
-           // fieldErrors.dni = ['Este DNI ya está en uso.'];
+        if (responseData.error && typeof responseData.error === 'string') {
+             if (responseData.error.toLowerCase().includes('email_unique') || responseData.error.toLowerCase().includes('email ya existe')) {
+                fieldErrors.email = ['Este email ya está en uso.'];
+            } else if (responseData.error.toLowerCase().includes('usuarios_nombre_key')) { // Asumiendo error de BD
+                fieldErrors.fullName = ['Este nombre completo ya está en uso (revisar).'];
+            }
         }
         return { type: 'error', message: responseData.mensaje || responseData.error || 'Error al actualizar el perfil desde el backend.', errors: fieldErrors };
     }
@@ -445,6 +455,7 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
         ...user,
         fullName: fullName,
         email: email,
+        // profilePictureUrl se mantiene como estaba en el frontend, ya que el backend no lo gestiona
     };
     console.log(`Notification (simulated): User profile for ${updatedFrontendUser.fullName} (ID: ${user.id}) updated via backend.`);
     return { type: 'success', message: responseData.mensaje || 'Perfil actualizado exitosamente.', user: updatedFrontendUser };
@@ -466,26 +477,15 @@ export async function changeUserPassword(prevState: ActionResponse | null, formD
   const { currentPassword, newPassword } = validatedFields.data;
 
   try {
+    // El backend de ejemplo no tiene un endpoint para verificar currentPassword antes de cambiar.
+    // Directamente se intenta actualizar la contraseña del usuario con la nueva.
+    // Si el backend necesitara verificar la currentPassword, se debería enviar y manejar allí.
     const backendPayload = {
-        // El endpoint PUT /usuarios/:id en tu backend espera un campo "password" para la nueva contraseña.
-        // No tiene un campo para "currentPassword". Si tu lógica de backend REQUIERE
-        // la contraseña actual para permitir un cambio, esa verificación debe hacerse ALLÍ.
-        // Si tu backend simplemente actualiza la contraseña si se le proporciona una, este payload es correcto.
-        password: newPassword,
+        password: newPassword, // El backend espera el campo "password" para la nueva contraseña
+        // Si tu backend SÍ verifica la contraseña actual, necesitarías un campo como `currentPassword` aquí
+        // y que el backend lo use. Por ejemplo:
+        // currentPassword: currentPassword 
     };
-
-    // Verificación de contraseña actual simulada (comentada si el backend no la necesita o la maneja él)
-    // Esta es una simulación; el backend real debería hacer esta verificación si es necesaria.
-    // Para que esto funcione, necesitaríamos la contraseña hasheada actual del usuario desde el backend,
-    // o un endpoint específico que verifique la contraseña actual.
-    // Por ahora, confiaremos en que el backend lo maneja o que la actualización directa es intencionada.
-    /*
-    const isCurrentPasswordCorrect = await bcrypt.compare(currentPassword, user.password_hash_del_backend_si_lo_tuvieramos);
-    if (!isCurrentPasswordCorrect) {
-      return { type: 'error', message: 'La contraseña actual es incorrecta.', errors: { currentPassword: ['La contraseña actual es incorrecta.'] }};
-    }
-    */
-
 
     const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${user.id}`, {
         method: 'PUT',
@@ -493,15 +493,15 @@ export async function changeUserPassword(prevState: ActionResponse | null, formD
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${globalThis.mockSession.token}`,
         },
-        body: JSON.stringify(backendPayload),
+        body: JSON.stringify(backendPayload), // Solo se envía la nueva contraseña.
     });
 
     const responseData = await response.json();
 
     if (!response.ok) {
-        // Si el backend devuelve un error específico por contraseña actual incorrecta, habría que mapearlo aquí.
-        // Ejemplo: if (responseData.error === "CONTRASEÑA_ACTUAL_INCORRECTA") { fieldErrors.currentPassword = ... }
         const fieldErrors: Record<string, string[]> = {};
+        // Asumimos que si hay error, podría ser porque la contraseña actual (si el backend la verifica) es incorrecta.
+        // O simplemente el backend no pudo actualizar.
          if (responseData.error && typeof responseData.error === 'string' && responseData.error.toLowerCase().includes('contraseña actual incorrecta')) {
             fieldErrors.currentPassword = [responseData.error];
         }
@@ -522,15 +522,14 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
   if (!validatedFields.success) {
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
-  const { dni } = validatedFields.data;
+  const { dni } = validatedFields.data; // El formulario actual solo pide DNI
 
   try {
+    // El backend puede aceptar `dni` o `email`. Enviamos DNI.
     const response = await fetch(`${BACKEND_BASE_URL}/auth/forgot-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // Tu backend espera { email, dni }. Aquí estamos enviando solo dni.
-      // El backend debe ser capaz de manejar solo DNI o solo email.
-      body: JSON.stringify({ dni }),
+      body: JSON.stringify({ dni }), // Envía DNI al backend
     });
     const data = await response.json();
 
@@ -538,10 +537,15 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
       return { type: 'error', message: data.error || 'Error al solicitar restablecimiento de contraseña.' };
     }
 
-    // El backend ahora devuelve el token real.
-    globalThis.backendResetTokenInfo = { dni: dni, token: data.resetToken };
-    console.log(`Notification (simulated): Password reset requested for DNI ${dni}. Real token from backend: ${data.resetToken}.`);
-
+    // Almacenar el token real del backend para la redirección
+    if (data.resetToken) {
+        globalThis.backendResetTokenInfo = { dni: dni, token: data.resetToken };
+        console.log(`Notification (simulated): Password reset requested for DNI ${dni}. Real token from backend: ${data.resetToken}.`);
+    } else {
+        console.warn("Backend did not return a resetToken on forgot-password success.");
+         return { type: 'error', message: data.mensaje || "No se pudo obtener el token de reseteo del backend." };
+    }
+    
     return { type: 'success', message: data.mensaje || "Si existe una cuenta con este DNI, se han proporcionado instrucciones para restablecer la contraseña." };
 
   } catch (error) {
@@ -576,7 +580,7 @@ export async function resetPasswordWithToken(prevState: ActionResponse | null, f
     }
 
     console.log(`Notification (simulated): Password reset successfully for DNI ${dni} using token.`);
-    globalThis.backendResetTokenInfo = null; // Limpiar token después de usarlo
+    globalThis.backendResetTokenInfo = null; 
     redirect('/login?reset=success');
 
   } catch (error) {
@@ -616,7 +620,7 @@ export async function cancelShift(prevState: ActionResponse | null, formData: Fo
     return { type: 'error', message: 'ID de turno es requerido.' };
   }
 
-  const cancelledShift = cancelShiftDB(shiftId);
+  const cancelledShift = cancelShiftHelperDB(shiftId);
 
   if (cancelledShift) {
     console.log(`Notification (simulated): Shift "${cancelledShift.theme}" (ID: ${shiftId}) cancelled by user ${user.fullName}.`);
@@ -698,7 +702,6 @@ export async function deleteManagedRoom(prevState: ActionResponse | null, formDa
 export async function findUserByDni(dni: string): Promise<User | null> {
     const session = globalThis.mockSession;
     if (!session?.token) {
-      // console.warn("findUserByDni: No hay token en sesión para autenticar la llamada al backend."); // Comentado para reducir ruido
       return null;
     }
     try {
@@ -715,7 +718,7 @@ export async function findUserByDni(dni: string): Promise<User | null> {
             fullName: backendUser.nombre,
             email: backendUser.email,
             role: backendUser.rol as UserRole,
-            profilePictureUrl: null, // El backend no maneja esto
+            profilePictureUrl: null, 
         };
     } catch (error) {
         console.error(`Error en findUserByDni para DNI ${dni}:`, error);

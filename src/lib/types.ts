@@ -11,13 +11,14 @@ export interface User {
   profilePictureUrl?: string | null; 
 }
 
-export type ShiftStatus = 'pending' | 'accepted' | 'cancelled';
+export type ShiftStatus = 'pendiente' | 'aceptado' | 'cancelado';
+export type InvitationStatus = 'pendiente' | 'aceptado' | 'rechazado';
 
 export interface ShiftInvitation {
   id: string;
   userId: string;
   userDni: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: InvitationStatus;
 }
 
 export interface Shift {
@@ -79,7 +80,7 @@ export interface BackendInvitation {
   id: number;
   id_turno: number;
   id_usuario: number;
-  estado_invitacion: 'pendiente' | 'aceptado' | 'rechazado';
+  estado_invitacion: InvitationStatus;
   Usuario?: BackendUser;
 }
 

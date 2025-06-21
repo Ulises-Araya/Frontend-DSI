@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse, Room, UserRole, BackendShift, BackendRoom, BackendInvitation, InvitationStatus } from './types';
 
-const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_BASE_URL;
+const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:3000/api';
 
 interface ActionResponse extends BaseActionResponse {
   user?: User;
@@ -48,6 +48,7 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
     console.log(`Attempting to login. Backend URL target: ${BACKEND_BASE_URL}/auth/login`);
     const response = await fetch(`${BACKEND_BASE_URL}/auth/login`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dni, password }),
     });
@@ -134,6 +135,7 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/auth/register`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nombre: fullName, email, dni, password, rol: 'usuario' }),
     });
@@ -258,6 +260,7 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/usuarios/forgot-password`, {
         method: 'POST',
+        credentials: 'include'
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dni: validatedFields.data.dni }),
     });
@@ -297,6 +300,7 @@ export async function resetPasswordWithToken(prevState: ActionResponse | null, f
     const { dni, token, newPassword } = validatedFields.data;
     const response = await fetch(`${BACKEND_BASE_URL}/usuarios/reset-password`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dni, token, newPassword }),
     });

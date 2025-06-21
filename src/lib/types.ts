@@ -103,5 +103,3 @@ export interface BackendShift {
 declare global {
   var backendResetTokenInfo: { dni: string; token: string } | null;
 }
-
-    

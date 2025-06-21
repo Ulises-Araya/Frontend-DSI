@@ -5,7 +5,8 @@ import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse, Room, UserRole, BackendShift, BackendRoom, BackendInvitation } from './types';
 
-const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:3001/api';
+// La URL del backend ahora está correctamente configurada para apuntar a tu servidor en el puerto 3000
+const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:3000/api';
 
 interface ActionResponse extends BaseActionResponse {
   user?: User;
@@ -16,11 +17,13 @@ interface ActionResponse extends BaseActionResponse {
 
 // --- SESSION HELPERS ---
 
-async function getSession(): Promise<{ token: string; userId: string; userRole: UserRole; userDni: string; } | null> {
-    const sessionCookie = cookies().get('session');
+// Obtiene los datos del usuario de la cookie 'session-data' que establece el frontend
+async function getSessionData(): Promise<User | null> {
+    const cookieStore = cookies();
+    const sessionCookie = cookieStore.get('session-data');
     if (!sessionCookie) return null;
     try {
-        return JSON.parse(sessionCookie.value);
+        return JSON.parse(sessionCookie.value) as User;
     } catch {
         return null;
     }
@@ -28,8 +31,9 @@ async function getSession(): Promise<{ token: string; userId: string; userRole: 
 
 // --- AUTH ACTIONS ---
 
+// Llama al endpoint del backend que establece la cookie httpOnly
 export async function loginUser(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  console.log(`Attempting to login. Backend URL target: ${BACKEND_BASE_URL}/auth/login`);
+  console.log(`Attempting to login. Backend URL target: ${BACKEND_BASE_URL}/usuarios/login`);
   const validatedFields = z.object({
     dni: z.string().min(1, "DNI es requerido"),
     password: z.string().min(1, "Contraseña es requerida"),
@@ -41,11 +45,13 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
   const { dni, password } = validatedFields.data;
 
   let loginResponse;
+  let userId;
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/auth/login`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dni, password }),
+      // No necesitamos 'credentials: include' aquí porque no estamos enviando cookies, sino recibiéndolas.
     });
 
     loginResponse = await response.json();
@@ -53,6 +59,10 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
     if (!response.ok) {
       return { type: 'error', message: loginResponse.error || 'Credenciales inválidas o error del servidor.' };
     }
+    if(!loginResponse.id) {
+      return { type: 'error', message: 'El backend no devolvió un ID de usuario.' };
+    }
+    userId = loginResponse.id;
   } catch (error: any) {
     let errorMessage = 'Error de conexión con el servidor de autenticación.';
     if (error.cause?.code === 'ECONNREFUSED') {
@@ -60,31 +70,48 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
     }
     return { type: 'error', message: errorMessage };
   }
-  
-  if (!loginResponse.token || !loginResponse.id || !loginResponse.rol) {
-      return { type: 'error', message: 'Respuesta de login inválida del servidor.' };
-  }
 
-  const frontendRole = loginResponse.rol === 'usuario' ? 'user' : loginResponse.rol;
+  // Si el login fue exitoso, el backend ya estableció la cookie httpOnly.
+  // Ahora, obtenemos los datos del usuario para guardarlos en una cookie del lado del cliente y para la redirección.
+  try {
+    const userDetailsResponse = await fetch(`${BACKEND_BASE_URL}/usuarios/${userId}`, {
+      // Esta llamada ya irá con la cookie httpOnly que el backend acaba de establecer.
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+    const user = await userDetailsResponse.json();
+    if (!userDetailsResponse.ok) {
+        return { type: 'error', message: user.error || 'No se pudieron obtener los detalles del usuario después del login.' };
+    }
+    
+    const frontendRole = user.rol === 'usuario' ? 'user' : user.rol;
+    const sessionData: User = {
+        id: user.id.toString(),
+        dni: user.dni,
+        fullName: user.nombre,
+        email: user.email,
+        role: frontendRole as UserRole,
+        profilePictureUrl: user.profilePictureUrl || null,
+    };
 
-  const sessionData = {
-    token: loginResponse.token,
-    userId: loginResponse.id.toString(),
-    userDni: dni,
-    userRole: frontendRole,
-  };
-  
-  cookies().set('session', JSON.stringify(sessionData), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 60 * 60 * 8, // 8 horas, como tu JWT
-    path: '/',
-  });
-  
-  if (frontendRole === 'admin') {
-    redirect('/dashboard/admin');
-  } else {
-    redirect('/dashboard/user');
+    // Guardamos los datos del usuario en una cookie accesible por el frontend para la UI
+    const cookieStore = cookies();
+    cookieStore.set('session-data', JSON.stringify(sessionData), {
+        httpOnly: false, // Debe ser accesible por el cliente
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 60 * 60 * 8, // 8 horas
+        path: '/',
+    });
+
+    if (sessionData.role === 'admin') {
+        redirect('/dashboard/admin');
+    } else {
+        redirect('/dashboard/user');
+    }
+
+  } catch (error) {
+     console.error('Error fetching user details after login:', error);
+     return { type: 'error', message: 'Error al obtener detalles del usuario.' };
   }
 }
 
@@ -106,7 +133,7 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
   const { fullName, email, dni, password } = validatedFields.data;
 
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/auth/register`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nombre: fullName, email, dni, password, rol: 'usuario' }),
@@ -116,8 +143,7 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
     if (!response.ok || response.status !== 201) {
       const fieldErrors: Record<string, string[]> = {};
       if (data.error && typeof data.error === 'string') {
-        if (data.error.toLowerCase().includes('dni')) fieldErrors.dni = [data.error];
-        else if (data.error.toLowerCase().includes('email')) fieldErrors.email = [data.error];
+        if (data.error.toLowerCase().includes('dni') || data.error.toLowerCase().includes('email')) fieldErrors.dni = [data.error];
       }
       return { type: 'error', message: data.error || 'Error al registrar desde el backend.', errors: fieldErrors };
     }
@@ -128,61 +154,32 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
   }
 }
 
+
 export async function getCurrentUser(): Promise<User | null> {
-    const session = await getSession();
-    if (!session?.userId || !session.token) {
-        return null;
-    }
-    try {
-        const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${session.userId}`, {
-            headers: { 'Authorization': `Bearer ${session.token}` },
-        });
-
-        if (!response.ok) {
-            console.error(`Error fetching user details: ${response.status} ${response.statusText}`);
-            if (response.status === 401 || response.status === 403) {
-                cookies().delete('session');
-            }
-            return null;
-        }
-
-        const backendUser = await response.json();
-        const frontendRole = backendUser.rol === 'usuario' ? 'user' : backendUser.rol;
-
-        return {
-            id: backendUser.id.toString(),
-            dni: backendUser.dni,
-            fullName: backendUser.nombre,
-            email: backendUser.email,
-            role: frontendRole as UserRole,
-            profilePictureUrl: null, 
-        };
-    } catch (error) {
-        console.error("getCurrentUser - Exception:", error);
-        return null;
-    }
+    // Lee la sesión de la cookie del lado del cliente
+    return await getSessionData();
 }
 
 export async function logoutUser() {
-  const session = await getSession();
-  if (session?.token) {
-    try {
-      await fetch(`${BACKEND_BASE_URL}/auth/logout`, {
+  try {
+    // Llama al backend para que borre la cookie httpOnly
+    await fetch(`${BACKEND_BASE_URL}/auth/logout`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${session.token}` },
-      });
-    } catch (error) {
-        console.error("Error calling backend logout, clearing session anyway.", error);
-    }
+        credentials: 'include', // Esencial para que la cookie sea enviada
+    });
+  } catch (error) {
+      console.error("Error calling backend logout, clearing session anyway.", error);
   }
-
-  cookies().delete('session');
+  
+  // Borra la cookie del lado del cliente
+  const cookieStore = cookies();
+  cookieStore.delete('session-data');
   redirect('/login');
 }
 
 export async function updateUserProfile(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const session = await getSession();
-  if (!session?.userId || !session.token) return { type: 'error', message: 'Usuario no autenticado.' };
+  const session = await getSessionData();
+  if (!session?.id) return { type: 'error', message: 'Usuario no autenticado.' };
 
   const validatedFields = z.object({
     fullName: z.string().min(3, "Nombre completo debe tener al menos 3 caracteres."),
@@ -194,9 +191,10 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
   }
 
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${session.userId}`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${session.id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', // Envía la cookie httpOnly para autenticación
       body: JSON.stringify({ nombre: validatedFields.data.fullName, email: validatedFields.data.email }),
     });
 
@@ -205,8 +203,13 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
     if (!response.ok) {
         return { type: 'error', message: responseData.error || 'Error al actualizar el perfil.' };
     }
-    const currentUser = await getCurrentUser();
-    return { type: 'success', message: 'Perfil actualizado exitosamente.', user: currentUser || undefined };
+    
+    // Vuelve a obtener y actualizar la cookie de sesión del cliente con los nuevos datos
+    const updatedUser = { ...session, fullName: validatedFields.data.fullName, email: validatedFields.data.email };
+    const cookieStore = cookies();
+    cookieStore.set('session-data', JSON.stringify(updatedUser));
+    
+    return { type: 'success', message: 'Perfil actualizado exitosamente.', user: updatedUser };
 
   } catch (error) {
     console.error('Error en updateUserProfile:', error);
@@ -215,8 +218,8 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
 }
 
 export async function changeUserPassword(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const session = await getSession();
-  if (!session?.userId || !session.token) return { type: 'error', message: 'Usuario no autenticado.' };
+  const session = await getSessionData();
+  if (!session?.id) return { type: 'error', message: 'Usuario no autenticado.' };
 
   const validatedFields = z.object({
       currentPassword: z.string().min(1, "Contraseña actual es requerida."),
@@ -233,11 +236,10 @@ export async function changeUserPassword(prevState: ActionResponse | null, formD
   const { newPassword } = validatedFields.data;
 
   try {
-    // El backend provisto no valida la contraseña actual, solo la actualiza.
-    // En un caso real, aquí habría una validación previa.
-    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${session.userId}`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${session.id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ password: newPassword }),
     });
 
@@ -259,7 +261,7 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
   }
 
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/auth/forgot-password`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dni: validatedFields.data.dni }),
@@ -296,7 +298,7 @@ export async function resetPasswordWithToken(prevState: ActionResponse | null, f
 
   try {
     const { dni, token, newPassword } = validatedFields.data;
-    const response = await fetch(`${BACKEND_BASE_URL}/auth/reset-password`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dni, token, newPassword }),
@@ -318,12 +320,9 @@ export async function resetPasswordWithToken(prevState: ActionResponse | null, f
 // --- SALA/ROOM ACTIONS ---
 
 export async function getManagedRooms(): Promise<Room[]> {
-  const session = await getSession();
-  if (!session?.token) return [];
-
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/salas`, {
-      headers: { 'Authorization': `Bearer ${session.token}` },
+      credentials: 'include',
     });
     if (!response.ok) return [];
     const rooms: BackendRoom[] = await response.json();
@@ -335,9 +334,6 @@ export async function getManagedRooms(): Promise<Room[]> {
 }
 
 export async function addManagedRoom(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const session = await getSession();
-  if (!session?.token) return { type: 'error', message: 'No autorizado.' };
-  
   const validatedFields = z.object({ name: z.string().min(3), capacity: z.coerce.number().min(1) }).safeParse(Object.fromEntries(formData.entries()));
   if (!validatedFields.success) {
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
@@ -346,7 +342,8 @@ export async function addManagedRoom(prevState: ActionResponse | null, formData:
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/salas`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.token}` },
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ nombre: validatedFields.data.name, capacidad: validatedFields.data.capacity }),
     });
     const newRoom = await response.json();
@@ -360,16 +357,13 @@ export async function addManagedRoom(prevState: ActionResponse | null, formData:
 }
 
 export async function deleteManagedRoom(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const session = await getSession();
-  if (!session?.token) return { type: 'error', message: 'No autorizado.' };
-  
   const id = formData.get('id') as string;
   if (!id) return { type: 'error', message: 'ID de sala es requerido.' };
 
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/salas/${id}`, {
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${session.token}` },
+      credentials: 'include',
     });
     if (!response.ok) {
       const data = await response.json();
@@ -385,8 +379,8 @@ export async function deleteManagedRoom(prevState: ActionResponse | null, formDa
 // --- SHIFT/TURNO ACTIONS ---
 
 export async function createShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-    const session = await getSession();
-    if (!session?.userId || !session.token) return { type: 'error', message: 'Usuario no autenticado.' };
+    const session = await getSessionData();
+    if (!session?.id) return { type: 'error', message: 'Usuario no autenticado.' };
 
     const validatedFields = z.object({
         date: z.string().min(1),
@@ -411,14 +405,15 @@ export async function createShift(prevState: ActionResponse | null, formData: Fo
             hora_fin: data.endTime,
             tematica: data.theme,
             observaciones: data.notes,
-            id_usuario: parseInt(session.userId),
+            id_usuario: parseInt(session.id),
             id_sala: parseInt(data.area),
             cantidad_integrantes: 1 + invitedDnis.length,
         };
 
         const shiftResponse = await fetch(`${BACKEND_BASE_URL}/turnos`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.token}` },
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify(shiftPayload),
         });
 
@@ -440,7 +435,8 @@ export async function createShift(prevState: ActionResponse | null, formData: Fo
             };
             await fetch(`${BACKEND_BASE_URL}/invitados`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.token}` },
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify(invitationPayload),
             });
         }
@@ -454,20 +450,20 @@ export async function createShift(prevState: ActionResponse | null, formData: Fo
 }
 
 export async function getUserShifts(): Promise<Shift[]> {
-    const session = await getSession();
-    if (!session?.userId || !session.token) return [];
+    const session = await getSessionData();
+    if (!session?.id) return [];
 
     try {
         const response = await fetch(`${BACKEND_BASE_URL}/turnos/full/all`, {
-             headers: { 'Authorization': `Bearer ${session.token}` }
+             credentials: 'include'
         });
         if (!response.ok) throw new Error('Failed to fetch shifts');
         
         const allShifts: BackendShift[] = await response.json();
 
-        const userCreatedShifts = allShifts.filter(shift => shift.Usuario?.id.toString() === session.userId);
+        const userCreatedShifts = allShifts.filter(shift => shift.Usuario?.id.toString() === session.id);
         const userInvitedShifts = allShifts.filter(shift => 
-            shift.InvitadosTurnos.some(inv => inv.Usuario?.id.toString() === session.userId)
+            shift.InvitadosTurnos.some(inv => inv.Usuario?.id.toString() === session.id)
         );
 
         const uniqueShifts = [...userCreatedShifts, ...userInvitedShifts].reduce((acc, current) => {
@@ -486,12 +482,9 @@ export async function getUserShifts(): Promise<Shift[]> {
 }
 
 export async function getAllShiftsAdmin(): Promise<Shift[]> {
-  const session = await getSession();
-  if (!session?.token) return [];
-
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/turnos/full/all`, {
-      headers: { 'Authorization': `Bearer ${session.token}` }
+      credentials: 'include'
     });
     if (!response.ok) return [];
     const backendShifts: BackendShift[] = await response.json();
@@ -503,9 +496,6 @@ export async function getAllShiftsAdmin(): Promise<Shift[]> {
 }
 
 export async function updateShiftDetails(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const session = await getSession();
-  if (!session?.token) return { type: 'error', message: 'No autorizado' };
-
   const validatedFields = z.object({
       shiftId: z.string().min(1),
       date: z.string().min(1),
@@ -532,7 +522,8 @@ export async function updateShiftDetails(prevState: ActionResponse | null, formD
       };
       const response = await fetch(`${BACKEND_BASE_URL}/turnos/${shiftId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.token}` },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify(payload)
       });
       const data = await response.json();
@@ -546,15 +537,14 @@ export async function updateShiftDetails(prevState: ActionResponse | null, formD
 }
 
 export async function cancelShift(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const session = await getSession();
-  if (!session?.token) return { type: 'error', message: 'No autorizado' };
   const shiftId = formData.get('shiftId') as string;
   if (!shiftId) return { type: 'error', message: 'ID de turno requerido.' };
   
   try {
       const response = await fetch(`${BACKEND_BASE_URL}/turnos/${shiftId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.token}` },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ estado: 'cancelado' })
       });
       const data = await response.json();
@@ -568,13 +558,11 @@ export async function cancelShift(prevState: ActionResponse | null, formData: Fo
 }
 
 export async function updateShiftStatus(shiftId: string, status: ShiftStatus): Promise<ActionResponse> {
-  const session = await getSession();
-  if (!session?.token) return { type: 'error', message: 'No autorizado' };
-
   try {
       const response = await fetch(`${BACKEND_BASE_URL}/turnos/${shiftId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.token}` },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ estado: status })
       });
       const data = await response.json();
@@ -588,9 +576,6 @@ export async function updateShiftStatus(shiftId: string, status: ShiftStatus): P
 }
 
 export async function respondToShiftInvitation(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const session = await getSession();
-  if (!session?.token) return { type: 'error', message: 'No autorizado.' };
-  
   const invitationId = formData.get('invitationId') as string;
   const response = formData.get('response') as 'accept' | 'reject';
 
@@ -602,7 +587,8 @@ export async function respondToShiftInvitation(prevState: ActionResponse | null,
   try {
       const fetchResponse = await fetch(`${BACKEND_BASE_URL}/invitados/${invitationId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.token}` },
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ estado_invitacion })
       });
       const data = await fetchResponse.json();
@@ -619,12 +605,9 @@ export async function respondToShiftInvitation(prevState: ActionResponse | null,
 // --- USER ACTIONS ---
 
 export async function findUserByDni(dni: string): Promise<User | null> {
-    const session = await getSession();
-    if (!session?.token) return null;
-
     try {
         const response = await fetch(`${BACKEND_BASE_URL}/usuarios/dni/${dni}`, {
-            headers: { 'Authorization': `Bearer ${session.token}` }
+            credentials: 'include'
         });
         if (!response.ok) return null;
         const backendUser = await response.json();
@@ -650,7 +633,8 @@ function mapBackendShiftToFrontend(backendShift: BackendShift): Shift {
     const invitations = backendShift.InvitadosTurnos || [];
     
     const acceptedCount = invitations.filter((inv: BackendInvitation) => inv.estado_invitacion === 'aceptado').length;
-    const participantCount = 1 + acceptedCount;
+    // El backend ahora calcula esto, pero podemos mantener la lógica por si acaso o usar backendShift.cantidad_integrantes
+    const participantCount = backendShift.cantidad_integrantes || (1 + acceptedCount);
 
     return {
         id: backendShift.id.toString(),
@@ -674,4 +658,3 @@ function mapBackendShiftToFrontend(backendShift: BackendShift): Shift {
         }))
     };
 }
-    

@@ -1,4 +1,3 @@
-
 "use server";
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
@@ -17,7 +16,7 @@ interface ActionResponse extends BaseActionResponse {
 // --- SESSION HELPERS ---
 
 async function getSessionData(): Promise<User | null> {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const sessionCookie = cookieStore.get('session-data');
     if (!sessionCookie) return null;
     try {
@@ -98,7 +97,7 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
       profilePictureUrl: userDetails.profilePictureUrl || null,
   };
 
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   cookieStore.set('session-data', JSON.stringify(sessionData), {
       httpOnly: false, // Client-side readable for UI updates
       secure: process.env.NODE_ENV === 'production',
@@ -161,7 +160,7 @@ export async function getCurrentUser(): Promise<User | null> {
 }
 
 export async function logoutUser() {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   try {
     await fetch(`${BACKEND_BASE_URL}/auth/logout`, {
         method: 'POST',
@@ -203,7 +202,7 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
     }
     
     const updatedUser = { ...session, fullName: validatedFields.data.fullName, email: validatedFields.data.email };
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     cookieStore.set('session-data', JSON.stringify(updatedUser));
     
     return { type: 'success', message: 'Perfil actualizado exitosamente.', user: updatedUser };
@@ -260,7 +259,7 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/usuarios/forgot-password`, {
         method: 'POST',
-        credentials: 'include'
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dni: validatedFields.data.dni }),
     });
@@ -304,6 +303,7 @@ export async function resetPasswordWithToken(prevState: ActionResponse | null, f
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dni, token, newPassword }),
     });
+  
     const data = await response.json();
 
     if (!response.ok) {
@@ -456,7 +456,7 @@ export async function getUserShifts(): Promise<Shift[]> {
 
     try {
         const response = await fetch(`${BACKEND_BASE_URL}/turnos/full/all`, {
-             credentials: 'include'
+            credentials: 'include',
         });
         if (!response.ok) throw new Error('Failed to fetch shifts');
         
@@ -485,7 +485,7 @@ export async function getUserShifts(): Promise<Shift[]> {
 export async function getAllShiftsAdmin(): Promise<Shift[]> {
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/turnos/full/all`, {
-      credentials: 'include'
+      credentials: 'include',
     });
     if (!response.ok) return [];
     const backendShifts: BackendShift[] = await response.json();
@@ -608,7 +608,7 @@ export async function respondToShiftInvitation(prevState: ActionResponse | null,
 export async function findUserByDni(dni: string): Promise<User | null> {
     try {
         const response = await fetch(`${BACKEND_BASE_URL}/usuarios/dni/${dni}`, {
-            credentials: 'include'
+            credentials: 'include',
         });
         if (!response.ok) return null;
         const backendUser = await response.json();
@@ -649,11 +649,13 @@ function mapBackendShiftToFrontend(backendShift: BackendShift): Shift {
         creatorId: creator?.id.toString() || '',
         creatorDni: creator?.dni || '',
         creatorFullName: creator?.nombre || 'Creador Desconocido',
-        invitedUserDnis: invitations.map((inv: BackendInvitation) => inv.Usuario?.dni).filter(Boolean),
+        invitedUserDnis: invitations
+          .map((inv: BackendInvitation) => inv.Usuario?.dni)
+          .filter((dni): dni is string => typeof dni === 'string'),
         invitations: invitations.map((inv: BackendInvitation) => ({
           id: inv.id.toString(),
           userId: inv.id_usuario.toString(),
-          userDni: inv.Usuario?.dni,
+          userDni: inv.Usuario?.dni ?? '',
           status: inv.estado_invitacion as InvitationStatus
         }))
     };

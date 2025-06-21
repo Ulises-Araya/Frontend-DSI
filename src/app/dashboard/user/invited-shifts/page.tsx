@@ -45,9 +45,9 @@ export default function InvitedShiftsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pendingInvitations = allInvitedShifts.filter(s => s.status === 'pending');
-  const confirmedInvitations = allInvitedShifts.filter(s => s.status === 'accepted');
-  const cancelledByOrganizerInvitations = allInvitedShifts.filter(s => s.status === 'cancelled');
+  const pendingInvitations = allInvitedShifts.filter(s => s.status === 'pendiente');
+  const confirmedInvitations = allInvitedShifts.filter(s => s.status === 'aceptado');
+  const cancelledByOrganizerInvitations = allInvitedShifts.filter(s => s.status === 'cancelado');
 
   return (
     <div className="space-y-8">

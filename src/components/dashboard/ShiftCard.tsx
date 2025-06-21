@@ -63,7 +63,7 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
     setIsUpdatingStatus(true);
     const result = await updateShiftStatus(shift.id, newStatus);
     if (result.type === 'success') {
-      toast({ title: "Estado Actualizado", description: `El turno "${shift.theme}" ahora está ${status}.` });
+      toast({ title: "Estado Actualizado", description: `El turno "${shift.theme}" ahora está ${newStatus}.` });
       if (onShiftUpdate) onShiftUpdate();
     } else {
       toast({ variant: "destructive", title: "Error", description: result.message || "No se pudo actualizar el estado." });
@@ -128,9 +128,9 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
 
   const getStatusVariant = (status: ShiftStatus): "default" | "secondary" | "destructive" | "outline" => {
     switch (status) {
-      case 'accepted': return 'default'; 
-      case 'pending': return 'secondary';
-      case 'cancelled': return 'destructive';
+      case 'aceptado': return 'default'; 
+      case 'pendiente': return 'secondary';
+      case 'cancelado': return 'destructive';
       default: return 'outline';
     }
   };
@@ -141,7 +141,7 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
   const canUserEditShift = 
     isCreator && 
     currentUserRole === 'user' && 
-    (shift.status === 'pending' || shift.status === 'accepted');
+    (shift.status === 'pendiente' || shift.status === 'aceptado');
 
   const canAdminEditShift = currentUserRole === 'admin'; 
 
@@ -150,7 +150,7 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
   const canUserCancelShift =
     isCreator &&
     currentUserRole === 'user' &&
-    (shift.status === 'pending' || shift.status === 'accepted');
+    (shift.status === 'pendiente' || shift.status === 'aceptado');
 
   const openEditModal = async () => {
     setIsLoadingRooms(true);
@@ -235,9 +235,9 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
                   <SelectValue placeholder="Estado" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pending" disabled={shift.status === 'pending'}>Pendiente</SelectItem>
-                  <SelectItem value="accepted" disabled={shift.status === 'accepted'}>Aceptado</SelectItem>
-                  <SelectItem value="cancelled" disabled={shift.status === 'cancelled'}>Cancelado</SelectItem>
+                  <SelectItem value="pendiente" disabled={shift.status === 'pendiente'}>Pendiente</SelectItem>
+                  <SelectItem value="aceptado" disabled={shift.status === 'aceptado'}>Aceptado</SelectItem>
+                  <SelectItem value="cancelado" disabled={shift.status === 'cancelado'}>Cancelado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -301,9 +301,9 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
             </AlertDialog>
           )}
       
-          {isInvited && currentUserRole === 'user' && (shift.status === 'pending' || shift.status === 'accepted') && (
+          {isInvited && currentUserRole === 'user' && (shift.status === 'pendiente' || shift.status === 'aceptado') && (
             <>
-              {shift.status === 'pending' && (
+              {shift.status === 'pendiente' && (
                 <>
                   <Button size="sm" onClick={() => handleInvitationResponse('accept')} disabled={isInvitationActionPending} className="bg-primary hover:bg-primary/80 flex-1 sm:flex-none">
                     <CheckCircle className="w-4 h-4 mr-1" /> Aceptar
@@ -313,7 +313,7 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
                   </Button>
                 </>
               )}
-              {shift.status === 'accepted' && (
+              {shift.status === 'aceptado' && (
                  <Button variant="outline" size="sm" onClick={() => handleInvitationResponse('reject')} disabled={isInvitationActionPending} className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive flex-1 sm:flex-none">
                   <LogOut className="w-4 h-4 mr-1" /> No Asistir
                 </Button>
@@ -323,7 +323,7 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
         </div>
         
         {!canEditShift && !canUserCancelShift &&
-         !(isInvited && currentUserRole === 'user' && (shift.status === 'pending' || shift.status === 'accepted')) &&
+         !(isInvited && currentUserRole === 'user' && (shift.status === 'pendiente' || shift.status === 'aceptado')) &&
          !(currentUserRole === 'admin') &&
           <div className="h-9 w-full sm:hidden"></div> 
         }
@@ -332,5 +332,3 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
     </Card>
   );
 }
-
-    

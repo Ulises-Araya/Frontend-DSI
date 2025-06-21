@@ -62,7 +62,7 @@ export default function UserDashboardPage() {
     return userCreatedShifts
       .filter(s => {
         const shiftDate = new Date(s.date + 'T00:00:00Z'); // Asegurar UTC para comparación
-        return shiftDate >= todayForCompare && (s.status === 'pending' || s.status === 'accepted');
+        return shiftDate >= todayForCompare && (s.status === 'pendiente' || s.status === 'aceptado');
       })
       .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   }, [userCreatedShifts, todayForCompare]);
@@ -71,7 +71,7 @@ export default function UserDashboardPage() {
     return userCreatedShifts
       .filter(s => {
         const shiftDate = new Date(s.date + 'T00:00:00Z'); // Asegurar UTC
-        return shiftDate < todayForCompare || s.status === 'cancelled';
+        return shiftDate < todayForCompare || s.status === 'cancelado';
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [userCreatedShifts, todayForCompare]);

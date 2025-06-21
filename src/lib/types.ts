@@ -8,7 +8,7 @@ export interface User {
   email: string;
   password?: string; 
   role: UserRole;     
-  profilePictureUrl?: string | null; 
+  profilePictureUrl: string | null; 
 }
 
 export type ShiftStatus = 'pendiente' | 'aceptado' | 'cancelado';
@@ -68,6 +68,7 @@ export interface BackendUser {
   nombre: string;
   email: string;
   rol: 'usuario' | 'admin';
+  foto_url: string | null;
 }
 
 export interface BackendRoom {

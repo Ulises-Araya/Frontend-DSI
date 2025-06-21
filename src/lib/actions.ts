@@ -76,11 +76,12 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     });
-    userDetails = await userDetailsResponse.json();
+    const userDetailsJson = await userDetailsResponse.json();
 
     if (!userDetailsResponse.ok) {
-        return { type: 'error', message: userDetails.error || 'No se pudieron obtener los detalles del usuario después del login.' };
+        return { type: 'error', message: userDetailsJson.error || 'No se pudieron obtener los detalles del usuario después del login.' };
     }
+    userDetails = userDetailsJson as BackendUser;
   } catch(error) {
      console.error('Error fetching user details after login:', error);
      return { type: 'error', message: 'Error al obtener detalles del usuario.' };
@@ -235,7 +236,7 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
     return { type: 'error', message: 'No se ha seleccionado ningún archivo.' };
   }
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const filePath = `public/fotourl/user-${session.id}-${Date.now()}`;
 
   try {
@@ -279,7 +280,7 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
       ...session,
       profilePictureUrl: newProfilePictureUrl,
     };
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     cookieStore.set('session-data', JSON.stringify(updatedUser), {
         httpOnly: false,
         secure: process.env.NODE_ENV === 'production',
@@ -729,11 +730,13 @@ function mapBackendShiftToFrontend(backendShift: BackendShift): Shift {
         creatorId: creator?.id.toString() || '',
         creatorDni: creator?.dni || '',
         creatorFullName: creator?.nombre || 'Creador Desconocido',
-        invitedUserDnis: invitations.map((inv: BackendInvitation) => inv.Usuario?.dni).filter(Boolean),
+        invitedUserDnis: invitations
+          .map((inv: BackendInvitation) => inv.Usuario?.dni)
+          .filter((dni): dni is string => typeof dni === 'string'),
         invitations: invitations.map((inv: BackendInvitation) => ({
           id: inv.id.toString(),
           userId: inv.id_usuario.toString(),
-          userDni: inv.Usuario?.dni,
+          userDni: inv.Usuario?.dni ?? '',
           status: inv.estado_invitacion
         }))
     };

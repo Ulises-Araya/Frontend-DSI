@@ -3,28 +3,29 @@
 
 import { useEffect, useState } from 'react';
 import type { User } from '@/lib/types';
-import { getCurrentUser } from '@/lib/actions'; // Cambiado
+import { getCurrentUser } from '@/lib/actions';
 import { UpdateProfileForm } from '@/components/dashboard/settings/UpdateProfileForm';
 import { ChangePasswordForm } from '@/components/dashboard/settings/ChangePasswordForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Settings as SettingsIcon, UserCog, KeyRound, ArrowLeft } from 'lucide-react';
+import { Settings as SettingsIcon, UserCog, KeyRound, ArrowLeft, Image as ImageIcon } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation'; // Importar useRouter
+import { useRouter } from 'next/navigation';
+import { UpdateProfilePictureForm } from '@/components/dashboard/settings/UpdateProfilePictureForm';
 
 export default function SettingsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const router = useRouter(); // Inicializar useRouter
+  const router = useRouter();
 
   useEffect(() => {
     async function loadUser() {
       setIsLoading(true);
       const fetchedUser = await getCurrentUser();
       if (!fetchedUser) {
-        router.push('/login'); // Redirigir si no hay usuario
+        router.push('/login');
       } else {
         setUser(fetchedUser);
       }
@@ -34,15 +35,8 @@ export default function SettingsPage() {
   }, [router]);
 
   const handleProfileUpdate = (updatedUser: User) => {
-    // La foto de perfil (profilePictureUrl) se gestiona localmente en el form y el header por ahora,
-    // ya que el backend provisto no la almacena. El `updatedUser` de la acción `updateUserProfile`
-    // contendrá los datos del backend (nombre, email) y el `profilePictureUrl` que ya tenía el usuario en el frontend.
-    setUser(prevUser => ({
-      ...(prevUser || {} as User), // Mantener datos existentes si prevUser es null
-      ...updatedUser, // Aplicar los datos actualizados del backend
-      // Asegurar que profilePictureUrl se mantiene si updatedUser no lo trae (porque backend no lo tiene)
-      profilePictureUrl: updatedUser.profilePictureUrl !== undefined ? updatedUser.profilePictureUrl : prevUser?.profilePictureUrl 
-    }));
+    // This function can now be used by both forms to update the user state
+    setUser(updatedUser);
   };
 
 
@@ -62,7 +56,6 @@ export default function SettingsPage() {
             <Skeleton className="h-4 w-2/3" />
           </CardHeader>
           <CardContent className="space-y-4">
-            <Skeleton className="h-20 w-20 rounded-full mb-4" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-full" />
             <Skeleton className="h-10 w-1/3" />
@@ -85,7 +78,6 @@ export default function SettingsPage() {
   }
 
   if (!user) {
-    // Ya debería haber redirigido, pero como fallback:
     return <p className="text-center text-muted-foreground">No se pudo cargar la información del usuario. Serás redirigido al login.</p>;
   }
 
@@ -107,13 +99,26 @@ export default function SettingsPage() {
           </Link>
         </Button>
       </div>
+
+      <Card className="bg-card/70 backdrop-blur-sm border-primary/20 shadow-lg">
+        <CardHeader className="flex flex-row items-center gap-3">
+          <ImageIcon className="w-7 h-7 text-accent" />
+          <div>
+            <CardTitle className="font-headline text-2xl text-foreground/90">Foto de Perfil</CardTitle>
+            <CardDescription className="text-muted-foreground">Actualiza tu imagen de perfil.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <UpdateProfilePictureForm currentUser={user} onProfileUpdate={handleProfileUpdate} />
+        </CardContent>
+      </Card>
       
       <Card className="bg-card/70 backdrop-blur-sm border-primary/20 shadow-lg">
         <CardHeader className="flex flex-row items-center gap-3">
           <UserCog className="w-7 h-7 text-accent" />
           <div>
             <CardTitle className="font-headline text-2xl text-foreground/90">Actualizar Perfil</CardTitle>
-            <CardDescription className="text-muted-foreground">Modifica tu nombre, email y foto de perfil.</CardDescription>
+            <CardDescription className="text-muted-foreground">Modifica tu nombre y email.</CardDescription>
           </div>
         </CardHeader>
         <CardContent>

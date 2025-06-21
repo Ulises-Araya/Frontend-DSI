@@ -1,8 +1,10 @@
+
 "use server";
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
-import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse, Room, UserRole, BackendShift, BackendRoom, BackendInvitation, InvitationStatus } from './types';
+import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse, Room, UserRole, BackendShift, BackendRoom, BackendInvitation, InvitationStatus, BackendUser } from './types';
+import { createSupabaseServerClient } from './supabase/server';
 
 const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:3000/api';
 
@@ -41,8 +43,7 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
   }
   const { dni, password } = validatedFields.data;
 
-  // --- Step 1: Attempt to Login ---
-  let loginResponse;
+  let loginResponseData;
   try {
     console.log(`Attempting to login. Backend URL target: ${BACKEND_BASE_URL}/auth/login`);
     const response = await fetch(`${BACKEND_BASE_URL}/auth/login`, {
@@ -52,12 +53,12 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
       body: JSON.stringify({ dni, password }),
     });
 
-    loginResponse = await response.json();
+    loginResponseData = await response.json();
 
     if (!response.ok) {
-      return { type: 'error', message: loginResponse.error || 'Credenciales inválidas o error del servidor.' };
+      return { type: 'error', message: loginResponseData.error || 'Credenciales inválidas o error del servidor.' };
     }
-    if (!loginResponse.id) {
+    if (!loginResponseData.id) {
       return { type: 'error', message: 'El backend no devolvió un ID de usuario.' };
     }
   } catch (error: any) {
@@ -68,13 +69,12 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
     return { type: 'error', message: errorMessage };
   }
   
-  // --- Step 2: Fetch User Details (already authenticated via httpOnly cookie) ---
-  let userDetails;
+  let userDetails: BackendUser;
   try {
-    const userDetailsResponse = await fetch(`${BACKEND_BASE_URL}/usuarios/${loginResponse.id}`, {
+    const userDetailsResponse = await fetch(`${BACKEND_BASE_URL}/usuarios/${loginResponseData.id}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', // Crucial: send the httpOnly cookie back to the server
+      credentials: 'include',
     });
     userDetails = await userDetailsResponse.json();
 
@@ -86,7 +86,6 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
      return { type: 'error', message: 'Error al obtener detalles del usuario.' };
   }
 
-  // --- Step 3: All data fetched, set session and redirect ---
   const frontendRole = userDetails.rol === 'usuario' ? 'user' : userDetails.rol;
   const sessionData: User = {
       id: userDetails.id.toString(),
@@ -94,18 +93,22 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
       fullName: userDetails.nombre,
       email: userDetails.email,
       role: frontendRole as UserRole,
-      profilePictureUrl: userDetails.profilePictureUrl || null,
+      profilePictureUrl: userDetails.foto_url,
   };
 
-  const cookieStore = await cookies();
-  cookieStore.set('session-data', JSON.stringify(sessionData), {
-      httpOnly: false, // Client-side readable for UI updates
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 60 * 60 * 8, // 8 hours
-      path: '/',
-  });
+  try {
+    const cookieStore = await cookies();
+    cookieStore.set('session-data', JSON.stringify(sessionData), {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 60 * 60 * 8,
+        path: '/',
+    });
+  } catch(e) {
+    console.error("Error setting cookie", e);
+    return { type: 'error', message: 'No se pudo establecer la sesión del usuario.'}
+  }
 
-  // Redirect outside of try-catch blocks
   if (sessionData.role === 'admin') {
     redirect('/dashboard/admin');
   } else {
@@ -160,7 +163,6 @@ export async function getCurrentUser(): Promise<User | null> {
 }
 
 export async function logoutUser() {
-  const cookieStore = await cookies();
   try {
     await fetch(`${BACKEND_BASE_URL}/auth/logout`, {
         method: 'POST',
@@ -170,6 +172,7 @@ export async function logoutUser() {
       console.error("Error calling backend logout, clearing session anyway.", error);
   }
   
+  const cookieStore = await cookies();
   cookieStore.delete('session-data');
   redirect('/login');
 }
@@ -200,11 +203,21 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
     if (!response.ok) {
         return { type: 'error', message: responseData.error || 'Error al actualizar el perfil.' };
     }
-    
-    const updatedUser = { ...session, fullName: validatedFields.data.fullName, email: validatedFields.data.email };
+
+    const updatedUser: User = {
+        ...session,
+        fullName: validatedFields.data.fullName,
+        email: validatedFields.data.email,
+    };
+
     const cookieStore = await cookies();
-    cookieStore.set('session-data', JSON.stringify(updatedUser));
-    
+    cookieStore.set('session-data', JSON.stringify(updatedUser), {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 60 * 60 * 8,
+        path: '/',
+    });
+
     return { type: 'success', message: 'Perfil actualizado exitosamente.', user: updatedUser };
 
   } catch (error) {
@@ -212,6 +225,76 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
     return { type: 'error', message: 'Error de conexión al actualizar el perfil.' };
   }
 }
+
+export async function updateProfilePicture(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
+  const session = await getSessionData();
+  if (!session?.id) return { type: 'error', message: 'Usuario no autenticado.' };
+
+  const file = formData.get('profilePicture') as File;
+  if (!file || file.size === 0) {
+    return { type: 'error', message: 'No se ha seleccionado ningún archivo.' };
+  }
+
+  const supabase = createSupabaseServerClient();
+  const filePath = `public/fotourl/user-${session.id}-${Date.now()}`;
+
+  try {
+    const { error: uploadError } = await supabase.storage
+      .from('fotourl') // Make sure this is your actual bucket name
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error('Supabase Upload Error:', uploadError);
+      return { type: 'error', message: `Error al subir la imagen: ${uploadError.message}` };
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('fotourl')
+      .getPublicUrl(filePath);
+    
+    if (!publicUrlData.publicUrl) {
+      return { type: 'error', message: 'No se pudo obtener la URL pública de la imagen.' };
+    }
+    
+    const newProfilePictureUrl = publicUrlData.publicUrl;
+    
+    // Update backend
+    const backendResponse = await fetch(`${BACKEND_BASE_URL}/usuarios/${session.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ foto_url: newProfilePictureUrl }),
+    });
+
+    if (!backendResponse.ok) {
+      const errorData = await backendResponse.json();
+      return { type: 'error', message: errorData.error || 'Error al guardar la URL en el backend.' };
+    }
+
+    // Update session cookie
+    const updatedUser: User = {
+      ...session,
+      profilePictureUrl: newProfilePictureUrl,
+    };
+    const cookieStore = cookies();
+    cookieStore.set('session-data', JSON.stringify(updatedUser), {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 60 * 60 * 8,
+        path: '/',
+    });
+    
+    return { type: 'success', message: 'Foto de perfil actualizada.', user: updatedUser };
+
+  } catch (error) {
+    console.error('Error en updateProfilePicture:', error);
+    return { type: 'error', message: 'Ocurrió un error inesperado.' };
+  }
+}
+
 
 export async function changeUserPassword(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const session = await getSessionData();
@@ -257,7 +340,7 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
   }
 
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/forgot-password`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/auth/forgot-password`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -268,9 +351,6 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
       return { type: 'error', message: data.error || "Error al solicitar reseteo." };
     }
     
-    // Store in a way that the frontend can access it to redirect.
-    // NOTE: In a real app, the token would be sent via email.
-    // This is a workaround for local development.
     globalThis.backendResetTokenInfo = { dni: validatedFields.data.dni, token: data.resetToken };
     
     return { type: 'success', message: 'Si el DNI es válido, se ha generado un token de reseteo.' };
@@ -295,15 +375,15 @@ export async function resetPasswordWithToken(prevState: ActionResponse | null, f
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
 
+  let redirectPath = '/login';
   try {
     const { dni, token, newPassword } = validatedFields.data;
-    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/reset-password`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/auth/reset-password`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dni, token, newPassword }),
     });
-  
     const data = await response.json();
 
     if (!response.ok) {
@@ -315,7 +395,7 @@ export async function resetPasswordWithToken(prevState: ActionResponse | null, f
     return { type: 'error', message: 'Error de conexión al restablecer la contraseña.' };
   }
   
-  redirect('/login');
+  redirect(redirectPath);
 }
 
 // --- SALA/ROOM ACTIONS ---
@@ -456,7 +536,7 @@ export async function getUserShifts(): Promise<Shift[]> {
 
     try {
         const response = await fetch(`${BACKEND_BASE_URL}/turnos/full/all`, {
-            credentials: 'include',
+             credentials: 'include'
         });
         if (!response.ok) throw new Error('Failed to fetch shifts');
         
@@ -485,7 +565,7 @@ export async function getUserShifts(): Promise<Shift[]> {
 export async function getAllShiftsAdmin(): Promise<Shift[]> {
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/turnos/full/all`, {
-      credentials: 'include',
+      credentials: 'include'
     });
     if (!response.ok) return [];
     const backendShifts: BackendShift[] = await response.json();
@@ -608,10 +688,10 @@ export async function respondToShiftInvitation(prevState: ActionResponse | null,
 export async function findUserByDni(dni: string): Promise<User | null> {
     try {
         const response = await fetch(`${BACKEND_BASE_URL}/usuarios/dni/${dni}`, {
-            credentials: 'include',
+            credentials: 'include'
         });
         if (!response.ok) return null;
-        const backendUser = await response.json();
+        const backendUser: BackendUser = await response.json();
         const frontendRole = backendUser.rol === 'usuario' ? 'user' : backendUser.rol;
 
         return {
@@ -620,7 +700,7 @@ export async function findUserByDni(dni: string): Promise<User | null> {
             fullName: backendUser.nombre,
             email: backendUser.email,
             role: frontendRole as UserRole,
-            profilePictureUrl: null,
+            profilePictureUrl: backendUser.foto_url,
         };
     } catch (error) {
         console.error(`Error en findUserByDni para DNI ${dni}:`, error);
@@ -645,18 +725,16 @@ function mapBackendShiftToFrontend(backendShift: BackendShift): Shift {
         participantCount: participantCount,
         notes: backendShift.observaciones,
         area: backendShift.Sala?.nombre || 'Sala no especificada',
-        status: backendShift.estado as ShiftStatus,
+        status: backendShift.estado,
         creatorId: creator?.id.toString() || '',
         creatorDni: creator?.dni || '',
         creatorFullName: creator?.nombre || 'Creador Desconocido',
-        invitedUserDnis: invitations
-          .map((inv: BackendInvitation) => inv.Usuario?.dni)
-          .filter((dni): dni is string => typeof dni === 'string'),
+        invitedUserDnis: invitations.map((inv: BackendInvitation) => inv.Usuario?.dni).filter(Boolean),
         invitations: invitations.map((inv: BackendInvitation) => ({
           id: inv.id.toString(),
           userId: inv.id_usuario.toString(),
-          userDni: inv.Usuario?.dni ?? '',
-          status: inv.estado_invitacion as InvitationStatus
+          userDni: inv.Usuario?.dni,
+          status: inv.estado_invitacion
         }))
     };
 }

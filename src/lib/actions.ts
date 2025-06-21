@@ -231,20 +231,26 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
   const session = await getSessionData();
   if (!session?.id) return { type: 'error', message: 'Usuario no autenticado.' };
 
+  const oldProfilePictureUrl = session.profilePictureUrl;
+
   const file = formData.get('profilePicture') as File;
   if (!file || file.size === 0) {
     return { type: 'error', message: 'No se ha seleccionado ningún archivo.' };
   }
+  if (file.size > 2 * 1024 * 1024) { // 2MB
+    return { type: 'error', message: 'El archivo es demasiado grande. El máximo es 2MB.', errors: { profilePicture: ['El archivo no debe superar los 2MB.'] } };
+  }
+
 
   const supabase = await createSupabaseServerClient();
-  const filePath = `public/fotourl/user-${session.id}-${Date.now()}`;
+  const fileName = `user-${session.id}-${Date.now()}`;
 
   try {
     const { error: uploadError } = await supabase.storage
-      .from('fotourl') // Make sure this is your actual bucket name
-      .upload(filePath, file, {
+      .from('fotourl') // Bucket name
+      .upload(fileName, file, { // Use just the file name as the path
         cacheControl: '3600',
-        upsert: true,
+        upsert: false,
       });
 
     if (uploadError) {
@@ -254,7 +260,7 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
 
     const { data: publicUrlData } = supabase.storage
       .from('fotourl')
-      .getPublicUrl(filePath);
+      .getPublicUrl(fileName); // Get URL for the new file name
     
     if (!publicUrlData.publicUrl) {
       return { type: 'error', message: 'No se pudo obtener la URL pública de la imagen.' };
@@ -262,7 +268,6 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
     
     const newProfilePictureUrl = publicUrlData.publicUrl;
     
-    // Update backend
     const backendResponse = await fetch(`${BACKEND_BASE_URL}/usuarios/${session.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -272,10 +277,21 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
 
     if (!backendResponse.ok) {
       const errorData = await backendResponse.json();
+      await supabase.storage.from('fotourl').remove([fileName]);
       return { type: 'error', message: errorData.error || 'Error al guardar la URL en el backend.' };
     }
 
-    // Update session cookie
+    if (oldProfilePictureUrl) {
+      const oldFileName = oldProfilePictureUrl.split('/').pop();
+      if (oldFileName) {
+        try {
+          await supabase.storage.from('fotourl').remove([oldFileName]);
+        } catch (deleteError) {
+          console.error("Failed to delete old profile picture, but continuing:", deleteError);
+        }
+      }
+    }
+
     const updatedUser: User = {
       ...session,
       profilePictureUrl: newProfilePictureUrl,
@@ -545,7 +561,7 @@ export async function getUserShifts(): Promise<Shift[]> {
 
         const userCreatedShifts = allShifts.filter(shift => shift.Usuario?.id.toString() === session.id);
         const userInvitedShifts = allShifts.filter(shift => 
-            shift.InvitadosTurnos.some(inv => inv.Usuario?.id.toString() === session.id)
+            shift.InvitadosTurnos.some(inv => inv.Usuario?.dni === session.dni)
         );
 
         const uniqueShifts = [...userCreatedShifts, ...userInvitedShifts].reduce((acc, current) => {
@@ -715,7 +731,7 @@ function mapBackendShiftToFrontend(backendShift: BackendShift): Shift {
     const invitations = backendShift.InvitadosTurnos || [];
     
     const acceptedCount = invitations.filter((inv: BackendInvitation) => inv.estado_invitacion === 'aceptado').length;
-    const participantCount = backendShift.cantidad_integrantes || (1 + acceptedCount);
+    const participantCount = 1 + acceptedCount;
 
     return {
         id: backendShift.id.toString(),

@@ -17,7 +17,8 @@ interface ActionResponse extends BaseActionResponse {
 // --- SESSION HELPERS ---
 
 async function getSession(): Promise<{ token: string; userId: string; userRole: UserRole; userDni: string; } | null> {
-    const sessionCookie = cookies().get('session');
+    const cookieStore = cookies();
+    const sessionCookie = cookieStore.get('session');
     if (!sessionCookie) return null;
     try {
         return JSON.parse(sessionCookie.value);
@@ -74,7 +75,8 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
     userRole: frontendRole,
   };
   
-  cookies().set('session', JSON.stringify(sessionData), {
+  const cookieStore = cookies();
+  cookieStore.set('session', JSON.stringify(sessionData), {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     maxAge: 60 * 60 * 8, // 8 horas, como tu JWT
@@ -141,7 +143,8 @@ export async function getCurrentUser(): Promise<User | null> {
         if (!response.ok) {
             console.error(`Error fetching user details: ${response.status} ${response.statusText}`);
             if (response.status === 401 || response.status === 403) {
-                cookies().delete('session');
+                // Si el token es inválido, borramos la cookie de sesión
+                await logoutUser();
             }
             return null;
         }
@@ -176,7 +179,8 @@ export async function logoutUser() {
     }
   }
 
-  cookies().delete('session');
+  const cookieStore = cookies();
+  cookieStore.delete('session');
   redirect('/login');
 }
 

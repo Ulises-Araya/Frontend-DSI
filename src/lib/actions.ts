@@ -3,9 +3,8 @@
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
-import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse, Room, UserRole, BackendShift, BackendRoom, BackendInvitation } from './types';
+import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse, Room, UserRole, BackendShift, BackendRoom, BackendInvitation, InvitationStatus } from './types';
 
-// La URL del backend ahora está correctamente configurada para apuntar a tu servidor en el puerto 3000
 const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:3000/api';
 
 interface ActionResponse extends BaseActionResponse {
@@ -17,7 +16,6 @@ interface ActionResponse extends BaseActionResponse {
 
 // --- SESSION HELPERS ---
 
-// Obtiene los datos del usuario de la cookie 'session-data' que establece el frontend
 async function getSessionData(): Promise<User | null> {
     const cookieStore = cookies();
     const sessionCookie = cookieStore.get('session-data');
@@ -25,15 +23,15 @@ async function getSessionData(): Promise<User | null> {
     try {
         return JSON.parse(sessionCookie.value) as User;
     } catch {
+        // Si la cookie está malformada, la eliminamos
+        cookieStore.delete('session-data');
         return null;
     }
 }
 
 // --- AUTH ACTIONS ---
 
-// Llama al endpoint del backend que establece la cookie httpOnly
 export async function loginUser(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  console.log(`Attempting to login. Backend URL target: ${BACKEND_BASE_URL}/usuarios/login`);
   const validatedFields = z.object({
     dni: z.string().min(1, "DNI es requerido"),
     password: z.string().min(1, "Contraseña es requerida"),
@@ -44,14 +42,14 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
   }
   const { dni, password } = validatedFields.data;
 
+  // --- Step 1: Attempt to Login ---
   let loginResponse;
-  let userId;
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/login`, {
+    console.log(`Attempting to login. Backend URL target: ${BACKEND_BASE_URL}/auth/login`);
+    const response = await fetch(`${BACKEND_BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dni, password }),
-      // No necesitamos 'credentials: include' aquí porque no estamos enviando cookies, sino recibiéndolas.
     });
 
     loginResponse = await response.json();
@@ -59,10 +57,9 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
     if (!response.ok) {
       return { type: 'error', message: loginResponse.error || 'Credenciales inválidas o error del servidor.' };
     }
-    if(!loginResponse.id) {
+    if (!loginResponse.id) {
       return { type: 'error', message: 'El backend no devolvió un ID de usuario.' };
     }
-    userId = loginResponse.id;
   } catch (error: any) {
     let errorMessage = 'Error de conexión con el servidor de autenticación.';
     if (error.cause?.code === 'ECONNREFUSED') {
@@ -70,50 +67,52 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
     }
     return { type: 'error', message: errorMessage };
   }
-
-  // Si el login fue exitoso, el backend ya estableció la cookie httpOnly.
-  // Ahora, obtenemos los datos del usuario para guardarlos en una cookie del lado del cliente y para la redirección.
+  
+  // --- Step 2: Fetch User Details (already authenticated via httpOnly cookie) ---
+  let userDetails;
   try {
-    const userDetailsResponse = await fetch(`${BACKEND_BASE_URL}/usuarios/${userId}`, {
-      // Esta llamada ya irá con la cookie httpOnly que el backend acaba de establecer.
+    const userDetailsResponse = await fetch(`${BACKEND_BASE_URL}/usuarios/${loginResponse.id}`, {
+      method: 'GET',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
+      credentials: 'include', // Crucial: send the httpOnly cookie back to the server
     });
-    const user = await userDetailsResponse.json();
+    userDetails = await userDetailsResponse.json();
+
     if (!userDetailsResponse.ok) {
-        return { type: 'error', message: user.error || 'No se pudieron obtener los detalles del usuario después del login.' };
+        return { type: 'error', message: userDetails.error || 'No se pudieron obtener los detalles del usuario después del login.' };
     }
-    
-    const frontendRole = user.rol === 'usuario' ? 'user' : user.rol;
-    const sessionData: User = {
-        id: user.id.toString(),
-        dni: user.dni,
-        fullName: user.nombre,
-        email: user.email,
-        role: frontendRole as UserRole,
-        profilePictureUrl: user.profilePictureUrl || null,
-    };
-
-    // Guardamos los datos del usuario en una cookie accesible por el frontend para la UI
-    const cookieStore = cookies();
-    cookieStore.set('session-data', JSON.stringify(sessionData), {
-        httpOnly: false, // Debe ser accesible por el cliente
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 60 * 60 * 8, // 8 horas
-        path: '/',
-    });
-
-    if (sessionData.role === 'admin') {
-        redirect('/dashboard/admin');
-    } else {
-        redirect('/dashboard/user');
-    }
-
-  } catch (error) {
+  } catch(error) {
      console.error('Error fetching user details after login:', error);
      return { type: 'error', message: 'Error al obtener detalles del usuario.' };
   }
+
+  // --- Step 3: All data fetched, set session and redirect ---
+  const frontendRole = userDetails.rol === 'usuario' ? 'user' : userDetails.rol;
+  const sessionData: User = {
+      id: userDetails.id.toString(),
+      dni: userDetails.dni,
+      fullName: userDetails.nombre,
+      email: userDetails.email,
+      role: frontendRole as UserRole,
+      profilePictureUrl: userDetails.profilePictureUrl || null,
+  };
+
+  const cookieStore = cookies();
+  cookieStore.set('session-data', JSON.stringify(sessionData), {
+      httpOnly: false, // Client-side readable for UI updates
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 8, // 8 hours
+      path: '/',
+  });
+
+  // Redirect outside of try-catch blocks
+  if (sessionData.role === 'admin') {
+    redirect('/dashboard/admin');
+  } else {
+    redirect('/dashboard/user');
+  }
 }
+
 
 export async function registerUser(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const validatedFields = z.object({
@@ -133,7 +132,7 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
   const { fullName, email, dni, password } = validatedFields.data;
 
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/register`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nombre: fullName, email, dni, password, rol: 'usuario' }),
@@ -156,23 +155,20 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
 
 
 export async function getCurrentUser(): Promise<User | null> {
-    // Lee la sesión de la cookie del lado del cliente
     return await getSessionData();
 }
 
 export async function logoutUser() {
+  const cookieStore = cookies();
   try {
-    // Llama al backend para que borre la cookie httpOnly
     await fetch(`${BACKEND_BASE_URL}/auth/logout`, {
         method: 'POST',
-        credentials: 'include', // Esencial para que la cookie sea enviada
+        credentials: 'include',
     });
   } catch (error) {
       console.error("Error calling backend logout, clearing session anyway.", error);
   }
   
-  // Borra la cookie del lado del cliente
-  const cookieStore = cookies();
   cookieStore.delete('session-data');
   redirect('/login');
 }
@@ -194,7 +190,7 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
     const response = await fetch(`${BACKEND_BASE_URL}/usuarios/${session.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', // Envía la cookie httpOnly para autenticación
+      credentials: 'include',
       body: JSON.stringify({ nombre: validatedFields.data.fullName, email: validatedFields.data.email }),
     });
 
@@ -204,7 +200,6 @@ export async function updateUserProfile(prevState: ActionResponse | null, formDa
         return { type: 'error', message: responseData.error || 'Error al actualizar el perfil.' };
     }
     
-    // Vuelve a obtener y actualizar la cookie de sesión del cliente con los nuevos datos
     const updatedUser = { ...session, fullName: validatedFields.data.fullName, email: validatedFields.data.email };
     const cookieStore = cookies();
     cookieStore.set('session-data', JSON.stringify(updatedUser));
@@ -271,7 +266,9 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
       return { type: 'error', message: data.error || "Error al solicitar reseteo." };
     }
     
-    // Almacenamos temporalmente el token para la redirección
+    // Store in a way that the frontend can access it to redirect.
+    // NOTE: In a real app, the token would be sent via email.
+    // This is a workaround for local development.
     globalThis.backendResetTokenInfo = { dni: validatedFields.data.dni, token: data.resetToken };
     
     return { type: 'success', message: 'Si el DNI es válido, se ha generado un token de reseteo.' };
@@ -577,12 +574,12 @@ export async function updateShiftStatus(shiftId: string, status: ShiftStatus): P
 
 export async function respondToShiftInvitation(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const invitationId = formData.get('invitationId') as string;
-  const response = formData.get('response') as 'accept' | 'reject';
+  const response = formData.get('response') as 'aceptar' | 'rechazar';
 
   if (!invitationId || !response) {
       return { type: 'error', message: 'Faltan datos para responder a la invitación.' };
   }
-  const estado_invitacion = response === 'accept' ? 'aceptado' : 'rechazado';
+  const estado_invitacion = response === 'aceptar' ? 'aceptado' : 'rechazado';
   
   try {
       const fetchResponse = await fetch(`${BACKEND_BASE_URL}/invitados/${invitationId}`, {
@@ -633,7 +630,6 @@ function mapBackendShiftToFrontend(backendShift: BackendShift): Shift {
     const invitations = backendShift.InvitadosTurnos || [];
     
     const acceptedCount = invitations.filter((inv: BackendInvitation) => inv.estado_invitacion === 'aceptado').length;
-    // El backend ahora calcula esto, pero podemos mantener la lógica por si acaso o usar backendShift.cantidad_integrantes
     const participantCount = backendShift.cantidad_integrantes || (1 + acceptedCount);
 
     return {
@@ -654,7 +650,7 @@ function mapBackendShiftToFrontend(backendShift: BackendShift): Shift {
           id: inv.id.toString(),
           userId: inv.id_usuario.toString(),
           userDni: inv.Usuario?.dni,
-          status: inv.estado_invitacion
+          status: inv.estado_invitacion as InvitationStatus
         }))
     };
 }

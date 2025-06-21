@@ -8,10 +8,9 @@ export default function ForgotPasswordPage() {
       <Image
         src="https://placehold.co/1920x1080.png"
         alt="Ancient scroll background"
-        layout="fill"
-        objectFit="cover"
+        fill={true}
         quality={75}
-        className="opacity-20 dark:opacity-10 -z-10"
+        className="opacity-20 dark:opacity-10 -z-10 object-cover"
         data-ai-hint="ancient scroll paper"
       />
       <ForgotPasswordForm />

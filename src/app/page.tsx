@@ -12,10 +12,9 @@ export default function Home() {
       <Image
         src="https://placehold.co/1920x1080.png"
         alt="Enchanted forest background"
-        layout="fill"
-        objectFit="cover"
+        fill={true}
         quality={80}
-        className="opacity-30 dark:opacity-20 -z-10"
+        className="opacity-30 dark:opacity-20 -z-10 object-cover"
         data-ai-hint="enchanted forest background"
       />
       <div className="absolute inset-0 bg-gradient-to-b from-background/50 via-background/80 to-background -z-10" />

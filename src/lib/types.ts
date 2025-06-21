@@ -102,12 +102,6 @@ export interface BackendShift {
 
 declare global {
   var backendResetTokenInfo: { dni: string; token: string } | null;
-  var mockSession: { 
-    currentUserId: string | null; 
-    currentUserRole: UserRole | null; 
-    currentUserDni: string | null;
-    token?: string | null; 
-  } | undefined;
 }
 
     

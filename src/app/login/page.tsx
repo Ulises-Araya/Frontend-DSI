@@ -9,10 +9,9 @@ export default function LoginPage() {
        <Image
         src="https://placehold.co/1920x1080.png"
         alt="Mystical herbs background"
-        layout="fill"
-        objectFit="cover"
+        fill={true}
         quality={75}
-        className="opacity-20 dark:opacity-10 -z-10"
+        className="opacity-20 dark:opacity-10 -z-10 object-cover"
         data-ai-hint="mystical herbs background"
       />
       <div className="w-full max-w-md">

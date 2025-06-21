@@ -11,10 +11,9 @@ export default function DashboardLayout({
       <Image
         src="https://placehold.co/1920x1080.png"
         alt="Subtle botanical pattern background"
-        layout="fill"
-        objectFit="cover"
+        fill={true}
         quality={50}
-        className="opacity-10 dark:opacity-5 -z-10"
+        className="opacity-10 dark:opacity-5 -z-10 object-cover"
         data-ai-hint="subtle botanical pattern"
       />
       <DashboardHeader />

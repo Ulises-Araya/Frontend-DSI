@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { logoutUser, getCurrentUser } from '@/lib/actions'; // Cambiado a getCurrentUser
+import { logoutUser, getCurrentUser } from '@/lib/actions';
 import { useEffect, useState } from 'react';
 import type { User } from '@/lib/types';
 import { LogOut, Settings, UserCircle, LayoutDashboard, MailCheck, Tent } from 'lucide-react';
@@ -25,42 +25,39 @@ export function DashboardHeader() {
 
   useEffect(() => {
     async function fetchUser() {
-      const currentUser = await getCurrentUser(); // Usar la nueva función que llama al backend
+      const currentUser = await getCurrentUser();
       setUser(currentUser);
       if (!currentUser) { 
-        // Si no hay usuario (ej. token expirado y logoutUser fue llamado desde getCurrentUser)
-        // la redirección ya debería haber ocurrido en logoutUser.
-        // Pero por si acaso, o si getCurrentUser solo retorna null sin redirigir en todos los casos:
-        if (router.pathname !== '/login') { // Evitar bucle si ya está en login
+        if (router.pathname !== '/login') {
             router.push('/login');
         }
       }
     }
     fetchUser();
-  }, [router]); // router como dependencia por si se usa dentro de fetchUser indirectamente
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.pathname]);
 
 
   useEffect(() => {
+    // This interval is useful for multi-tab scenarios, but can be taxing.
+    // It ensures that if a user logs out in one tab, the UI updates in another.
     const interval = setInterval(async () => {
-      // Solo refrescar si hay un usuario, para evitar llamadas innecesarias si no está logueado
-      if (globalThis.mockSession?.currentUserId && globalThis.mockSession?.token) {
-        const potentiallyUpdatedUser = await getCurrentUser();
-        // Compara el objeto usuario completo para ver si hay cambios
-        if (JSON.stringify(user) !== JSON.stringify(potentiallyUpdatedUser)) {
-          setUser(potentiallyUpdatedUser);
+      const potentiallyUpdatedUser = await getCurrentUser();
+      // Simple string comparison is cheaper than deep object comparison
+      if (JSON.stringify(user) !== JSON.stringify(potentiallyUpdatedUser)) {
+        setUser(potentiallyUpdatedUser);
+        if (!potentiallyUpdatedUser) {
+           router.push('/login');
         }
-      } else if (user) { // Si teníamos un usuario pero la sesión global ya no, significa que se deslogueó.
-        setUser(null);
-        if (router.pathname !== '/login') router.push('/login');
       }
-    }, 5000); // Aumentado a 5 segundos para no sobrecargar
+    }, 5000); 
     return () => clearInterval(interval);
   }, [user, router]);
 
   const handleLogout = async () => {
     await logoutUser();
-    setUser(null); // Asegurar que el estado local se limpie inmediatamente
-    // la redirección ya ocurre dentro de logoutUser
+    setUser(null); 
+    // Redirection now happens inside logoutUser
   };
   
   const getInitials = (name: string = "") => {

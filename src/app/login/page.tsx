@@ -3,6 +3,9 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import Image from 'next/image';
 import Link from 'next/link';
 
+// Forzar el renderizado dinámico para permitir la lectura de cookies en las Server Actions si fuera necesario.
+export const dynamic = 'force-dynamic';
+
 export default function LoginPage() {
   return (
     <div className="flex items-center justify-center min-h-screen p-4 bg-gradient-to-br from-background via-primary/10 to-background">

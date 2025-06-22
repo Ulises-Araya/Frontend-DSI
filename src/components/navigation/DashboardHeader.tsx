@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import Image from 'next/image';
 
 export function DashboardHeader() {
   const [user, setUser] = useState<User | null>(null);
@@ -66,23 +67,13 @@ export function DashboardHeader() {
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between max-w-screen-2xl">
+      <div className="container flex h-16 items-center justify-between max-w-screen-2xl mb-2 mt-2">
         <Link href={user?.role === 'admin' ? "/dashboard/admin" : "/dashboard/user"} className="mr-6 flex items-center space-x-2">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-primary">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
-             <path d="M12 22V12"></path>
-             <path d="M20 12v5"></path>
-             <path d="M4 12v5"></path>
-             <path d="M16.5 10.5l-3-1.73"></path>
-             <path d="M7.5 10.5l3-1.73"></path>
-          </svg>
-          <div>
-            <span className="font-headline text-lg font-bold text-primary">ArborVitae Scheduler</span>
-            <span className="block font-body text-xs text-muted-foreground hidden sm:block">El planificador natural de tus turnos.</span>
-          </div>
+          <Image src="/icono.png" alt="Icono" width={50} height={100} className="w-50 h-auto mx-auto ml-6" />
+          <Image src="/logo2.png" alt="Logo" width={150} height={100} className="w-50 h-auto mx-auto" />
         </Link>
         
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3 mr-6">
           {user ? ( // Solo mostrar si el usuario está cargado
              <DropdownMenu>
               <DropdownMenuTrigger asChild>

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useActionState, useEffect } from "react";
@@ -14,6 +13,7 @@ import { loginUser } from "@/lib/actions";
 import { useToast } from "@/hooks/use-toast";
 import { BookOpenText, KeyRound } from "lucide-react";
 import type { ActionResponse } from "@/lib/types";
+import Image from 'next/image';
 
 const LoginSchema = z.object({
   dni: z.string().min(1, "DNI es requerido"),
@@ -53,7 +53,7 @@ export function LoginForm() {
   return (
     <Card className="w-full max-w-md shadow-2xl bg-card/90 backdrop-blur-sm border-primary/30">
       <CardHeader className="text-center">
-        <BookOpenText className="w-12 h-12 mx-auto mb-4 text-primary" />
+        <Image src="/icono2.png" alt="Icono" width={110} height={100} className="w-50 h-auto mx-auto mb-2" />
         <CardTitle className="font-headline text-3xl">Iniciar Sesión</CardTitle>
         <CardDescription className="text-muted-foreground">Accede a tu cuenta para gestionar tus turnos.</CardDescription>
       </CardHeader>

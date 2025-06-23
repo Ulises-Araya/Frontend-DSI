@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from 'next/link';
@@ -9,23 +8,18 @@ import { Leaf, Sparkles } from 'lucide-react';
 export default function Home() {
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-8 relative overflow-hidden">
-      <Image
-        src="/fondo.png"
-        alt="Enchanted forest background"
-        fill={true}
-        quality={80}
-        className="opacity-30 dark:opacity-20 -z-10 object-cover"
-        data-ai-hint="enchanted forest background"
-      />
-      <div className="absolute inset-0 bg-gradient-to-b from-background/50 via-background/80 to-background -z-10" />
-
+      <div className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/40 to-background/60 -z-10" />
       <div className="text-center bg-card/80 backdrop-blur-sm p-8 md:p-12 rounded-xl shadow-2xl border border-primary/30">
         <Image src="/logo.png" alt="Logo" width={300} height={200} className="w-50 h-auto mx-auto mb-6" />
-        <Button asChild size="lg" className="group relative overflow-hidden transition-all duration-300 ease-out hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-background">
-          <Link href="/login">
-            <Sparkles className="w-5 h-5 mr-2 opacity-70 group-hover:opacity-100 group-hover:animate-ping absolute left-4 top-1/2 -translate-y-1/2" />
-             Acceder al Login
-            <span className="absolute inset-0 bg-gradient-to-r from-transparent via-accent/30 to-transparent transition-all duration-1000 ease-out group-hover:translate-x-full animate-none group-hover:animate-[shimmer_2s_infinite]" />
+        <Button
+          asChild
+          size="lg"
+          className="group relative overflow-hidden transition-all duration-300 ease-out bg-[#F5F5DC] text-[#7B8C77] border-2 border-[#91b188] rounded-lg shadow-md hover:ring-2 hover:ring-[#91b188] hover:ring-offset-2 hover:ring-offset-[#F5F5DC] hover:bg-[#f5f5d3] font-serif"
+        >
+          <Link href="/login" className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 opacity-60 text-7B8C77 group-hover:opacity-80 transition-opacity duration-300" />
+            Acceder al Login
+            <span className="absolute inset-0 bg-gradient-to-r from-transparent via-[#8ebe8ee6] to-transparent opacity-0 group-hover:opacity-20 transition-all duration-1000 ease-out group-hover:translate-x-full animate-none group-hover:animate-[shimmer_2s_infinite]" />
           </Link>
         </Button>
       </div>

@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from 'next/link';
@@ -22,6 +21,7 @@ import Image from 'next/image';
 
 export function DashboardHeader() {
   const [user, setUser] = useState<User | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false); // Nuevo estado para controlar el menú
   const router = useRouter();
 
   useEffect(() => {
@@ -38,13 +38,20 @@ export function DashboardHeader() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.pathname]);
 
+  useEffect(() => {
+    const handleScroll = () => {
+      if (isMenuOpen) {
+        setIsMenuOpen(false); // Cierra el menú al hacer scroll
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isMenuOpen]); // Solo se ejecuta cuando cambia isMenuOpen
 
   useEffect(() => {
-    // This interval is useful for multi-tab scenarios, but can be taxing.
-    // It ensures that if a user logs out in one tab, the UI updates in another.
     const interval = setInterval(async () => {
       const potentiallyUpdatedUser = await getCurrentUser();
-      // Simple string comparison is cheaper than deep object comparison
       if (JSON.stringify(user) !== JSON.stringify(potentiallyUpdatedUser)) {
         setUser(potentiallyUpdatedUser);
         if (!potentiallyUpdatedUser) {
@@ -58,7 +65,6 @@ export function DashboardHeader() {
   const handleLogout = async () => {
     await logoutUser();
     setUser(null); 
-    // Redirection now happens inside logoutUser
   };
   
   const getInitials = (name: string = "") => {
@@ -70,12 +76,12 @@ export function DashboardHeader() {
       <div className="container flex h-16 items-center justify-between max-w-screen-2xl mb-2 mt-2">
         <Link href={user?.role === 'admin' ? "/dashboard/admin" : "/dashboard/user"} className="mr-6 flex items-center space-x-2">
           <Image src="/icono.png" alt="Icono" width={50} height={100} className="w-50 h-auto mx-auto ml-6" />
-          <Image src="/logo2.png" alt="Logo" width={150} height={100} className="w-50 h-auto mx-auto" />
+          <Image src="/logo2.png" alt="Logo" width={180} height={100} className="w-50 h-auto mx-auto" />
         </Link>
         
         <div className="flex items-center space-x-3 mr-6">
-          {user ? ( // Solo mostrar si el usuario está cargado
-             <DropdownMenu>
+          {user ? (
+             <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                   <Avatar className="h-9 w-9 border border-primary/50">
@@ -122,7 +128,7 @@ export function DashboardHeader() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <UserCircle className="h-8 w-8 text-muted-foreground animate-pulse" /> // Indicador de carga o no logueado
+            <UserCircle className="h-8 w-8 text-muted-foreground animate-pulse" />
           )}
           <ThemeToggle />
         </div>

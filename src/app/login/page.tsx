@@ -1,32 +1,24 @@
-
 import { LoginForm } from '@/components/auth/LoginForm';
 import Image from 'next/image';
 import Link from 'next/link';
 
-// Forzar el renderizado dinámico para permitir la lectura de cookies en las Server Actions si fuera necesario.
 export const dynamic = 'force-dynamic';
 
 export default function LoginPage() {
   return (
-    <div className="flex items-center justify-center min-h-screen p-4 bg-gradient-to-br from-background via-primary/10 to-background">
-       <Image
-        src="/fondo.png"
-        alt="Mystical herbs background"
-        fill={true}
-        quality={75}
-        className="opacity-20 dark:opacity-10 -z-10 object-cover"
-        data-ai-hint="mystical herbs background"
-      />
-      <div className="w-full max-w-md">
+    <main className="flex flex-col items-center justify-center min-h-screen p-8 relative overflow-hidden font-serif" style={{ fontFamily: "'EB Garamond', serif" }}>
+
+      {/* Gradiente suave sobre el fondo (como en Home) */}
+      <div className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/40 to-background/60 -z-10" />
+
+      {/* Contenido del Login */}
+      <section
+        style={{
+          boxShadow: "0 8px 32px 0 rgba(13,51,51,0.18), 0 1.5px 0 0 #e0c3a7",
+        }}
+      >
         <LoginForm />
-        <div className="mt-4 text-center">
-          <Link href="/forgot-password" passHref>
-            <span className="text-sm text-accent hover:text-accent/80 hover:underline cursor-pointer">
-              ¿Olvidaste tu contraseña?
-            </span>
-          </Link>
-        </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

@@ -51,58 +51,60 @@ export function LoginForm() {
   }, [state, toast]);
 
   return (
-    <Card className="w-full max-w-md shadow-2xl bg-card/90 backdrop-blur-sm border-primary/30">
+    <Card className="w-full max-w-md shadow-lg bg-white/95 border border-[#667b68] pl-4 pr-4 pt-3 pb-2">
       <CardHeader className="text-center">
-        <Image src="/icono2.png" alt="Icono" width={110} height={100} className="w-50 h-auto mx-auto mb-2" />
-        <CardTitle className="font-headline text-3xl">Iniciar Sesión</CardTitle>
-        <CardDescription className="text-muted-foreground">Accede a tu cuenta para gestionar tus turnos.</CardDescription>
+        <Image src="/icono.png" alt="Icono" width={90} height={90} className="mx-auto mb-2" />
+        <CardTitle className="font-serif text-2xl text-[#133337]">Iniciar Sesión</CardTitle>
+        <CardDescription className="text-[#6a7358]">Accede a tu cuenta para gestionar tus turnos.</CardDescription>
       </CardHeader>
-      {/* La Server Action se pasa directamente al 'action' del formulario */}
       <form action={formAction}>
         <CardContent className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="dni">DNI</Label>
+            <Label htmlFor="dni" className="text-[#3d271a]">DNI</Label>
             <Input
               id="dni"
-              name="dni" // 'name' es crucial para que FormData lo recoja
+              name="dni"
               type="text"
               placeholder="Tu número de DNI"
-              {...form.register("dni")} // RHF puede controlar el input para validación UI
-              className="bg-background/70 border-border focus:border-primary"
+              {...form.register("dni")}
+              className="bg-[#fbfbf0] border-[#aeb6a0] focus:border-[#133337] text-[#133337]"
             />
-            {/* Mostrar error de validación de RHF (lado del cliente) */}
-            {form.formState.errors.dni && <p className="text-sm text-destructive mt-1">{form.formState.errors.dni.message}</p>}
-            {/* Mostrar error del DNI desde la Server Action */}
-            {state?.errors?.dni && <p className="text-sm text-destructive mt-1">{state.errors.dni[0]}</p>}
+            {form.formState.errors.dni && <p className="text-sm text-[#c97e3d] mt-1">{form.formState.errors.dni.message}</p>}
+            {state?.errors?.dni && <p className="text-sm text-[#c97e3d] mt-1">{state.errors.dni[0]}</p>}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Contraseña</Label>
+            <Label htmlFor="password" className="text-[#3d271a]">Contraseña</Label>
             <Input
               id="password"
-              name="password" // 'name' es crucial para que FormData lo recoja
+              name="password"
               type="password"
               placeholder="Tu contraseña"
-              {...form.register("password")} // RHF puede controlar el input para validación UI
-              className="bg-background/70 border-border focus:border-primary"
+              {...form.register("password")}
+              className="bg-[#fbfbf0] border-[#aeb6a0] focus:border-[#133337] text-[#133337]"
             />
-            {/* Mostrar error de validación de RHF (lado del cliente) */}
-            {form.formState.errors.password && <p className="text-sm text-destructive mt-1">{form.formState.errors.password.message}</p>}
-            {/* Mostrar error de contraseña desde la Server Action */}
-            {state?.errors?.password && <p className="text-sm text-destructive mt-1">{state.errors.password[0]}</p>}
+            {form.formState.errors.password && <p className="text-sm text-[#c97e3d] mt-1">{form.formState.errors.password.message}</p>}
+            {state?.errors?.password && <p className="text-sm text-[#c97e3d] mt-1">{state.errors.password[0]}</p>}
           </div>
-          {/* Mostrar error general de la Server Action si no es específico de un campo */}
           {state?.type === 'error' && state.message && !state.errors?.dni && !state.errors?.password && (
-            <p className="text-sm text-destructive">{state.message}</p>
+            <p className="text-sm text-[#c97e3d]">{state.message}</p>
           )}
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full group relative" disabled={isActionPending}>
-            {isActionPending ? "Ingresando..." : "Iniciar Sesión"}
-            <KeyRound className="w-4 h-4 ml-2 opacity-70 group-hover:opacity-100 transition-opacity" />
-          </Button>
-          <Button variant="link" asChild className="text-accent hover:text-accent/80">
-            <Link href="/register">¿No tienes cuenta? Regístrate</Link>
-          </Button>
+        <Button
+          type="submit"
+          disabled={isActionPending}
+          className="flex items-center justify-center gap-2 px-8 py-4 rounded-lg bg-[#8ebe8ee6] text-[#384C38] font-serif border border-[#6B8E23] shadow-md transition-all duration-300 hover:bg-[#7fab7fe6] hover:scale-105 hover:ring-2 hover:ring-[#667B68] disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span className="flex items-center gap-2">
+            <KeyRound className="w-5 h-5 text-[#384C38]" />
+            {isActionPending ? 'Ingresando...' : 'Iniciar Sesión'}
+          </span>
+        </Button>
+          <div className="flex flex-row justify-center items-center gap-2 text-[#065535] text-sm">
+            <Link href="/register" className="hover:underline hover:text-[#133337]">¿No tienes cuenta? Regístrate</Link>
+            <span className="text-[#aeb6a0]">|</span>
+            <Link href="/forgot-password" className="hover:underline hover:text-[#133337]">¿Olvidaste tu contraseña?</Link>
+          </div>
         </CardFooter>
       </form>
     </Card>

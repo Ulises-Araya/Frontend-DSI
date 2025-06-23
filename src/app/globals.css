@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .allow-scroll {
+    pointer-events: none;
+  }
+  .allow-scroll > * {
+    pointer-events: auto;
+  }
+}
+
 @layer base {
   :root {
     --background: 60 56% 91.2%; /* Aged Cream #F5F5DC */
@@ -91,6 +100,7 @@
     --sidebar-ring: 30 60% 55%;
   }
 }
+
 
 @layer base {
   * {

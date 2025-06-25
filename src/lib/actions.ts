@@ -12,6 +12,10 @@ interface ActionResponse extends BaseActionResponse {
   room?: Room;
   rooms?: Room[];
   shift?: Shift;
+  resetData?: {
+    dni: string;
+    token: string;
+  };
 }
 
 // --- SESSION HELPERS ---
@@ -44,8 +48,7 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
 
   let loginResponseData;
   try {
-    console.log(`Attempting to login. Backend URL target: ${BACKEND_BASE_URL}/auth/login`);
-    const response = await fetch(`${BACKEND_BASE_URL}/auth/login`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/auth/login`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -65,6 +68,7 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
     if (error.cause?.code === 'ECONNREFUSED') {
         errorMessage = `No se pudo conectar a ${BACKEND_BASE_URL}. Asegúrate de que el servidor backend esté corriendo.`;
     }
+    console.error('Error in loginUser:', error);
     return { type: 'error', message: errorMessage };
   }
   
@@ -101,7 +105,7 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
     cookieStore.set('session-data', JSON.stringify(sessionData), {
         httpOnly: false,
         secure: process.env.NODE_ENV === 'production',
-        maxAge: 60 * 60 * 8,
+        maxAge: 60 * 60 * 8, // 8 hours
         path: '/',
     });
   } catch(e) {
@@ -119,9 +123,9 @@ export async function loginUser(prevState: ActionResponse | null, formData: Form
 
 export async function registerUser(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
   const validatedFields = z.object({
-    fullName: z.string().min(1, "Nombre completo es requerido"),
+    fullName: z.string().min(3, "Nombre completo debe tener al menos 3 caracteres"),
     email: z.string().email("Email inválido"),
-    dni: z.string().min(1, "DNI es requerido"),
+    dni: z.string().min(7, "DNI debe tener al menos 7 caracteres").max(8, "DNI debe tener como máximo 8 caracteres"),
     password: z.string().min(6, "Contraseña debe tener al menos 6 caracteres"),
     confirmPassword: z.string(),
   }).refine(data => data.password === data.confirmPassword, {
@@ -135,7 +139,7 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
   const { fullName, email, dni, password } = validatedFields.data;
 
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/auth/register`, {
+    const response = await fetch(`${BACKEND_BASE_URL}/usuarios/auth/register`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -144,11 +148,7 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
     const data = await response.json();
 
     if (!response.ok || response.status !== 201) {
-       const message = data.error || 'Error al registrar desde el backend.';
-       if (message.toLowerCase().includes('unique constraint') || message.toLowerCase().includes('ya existe') || message.toLowerCase().includes('registrados')) {
-        return { type: 'error', message: "El DNI o el email ya se encuentran registrados.", errors: { dni: ["El DNI o el email ya se encuentran registrados."] } };
-      }
-      return { type: 'error', message: message };
+      return { type: 'error', message: data.error || 'Error al registrar desde el backend.' };
     }
     return { type: 'success', message: 'Registro exitoso. Por favor, inicia sesión.' };
   } catch (error) {
@@ -164,29 +164,16 @@ export async function getCurrentUser(): Promise<User | null> {
 
 export async function logoutUser() {
   try {
-    // Intenta llamar al backend, pero ignora cualquier error de red o timeout
-    await Promise.race([
-      fetch(`${BACKEND_BASE_URL}/auth/logout`, {
+    await fetch(`${BACKEND_BASE_URL}/usuarios/auth/logout`, {
         method: 'POST',
         credentials: 'include',
-        // timeout de 2 segundos para evitar cuelgues si el backend está caído
-        signal: AbortSignal.timeout ? AbortSignal.timeout(2000) : undefined
-      }),
-      new Promise((resolve) => setTimeout(resolve, 2000)) // fallback si fetch no soporta timeout
-    ]);
+    });
   } catch (error) {
-    // Silencia cualquier error, solo loguea si es útil para debug
-    // console.error("Error calling backend logout, clearing session anyway.", error);
+      console.error("Error calling backend logout, clearing session anyway.", error);
   }
-
+  
   const cookieStore = await cookies();
-  // Usa .set con maxAge 0 para borrar la cookie en todos los navegadores
-  cookieStore.set('session-data', '', {
-    httpOnly: false,
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 0,
-    path: '/',
-  });
+  cookieStore.delete('session-data');
   redirect('/login');
 }
 
@@ -249,23 +236,22 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
   if (!file || file.size === 0) {
     return { type: 'error', message: 'No se ha seleccionado ningún archivo.' };
   }
-  if (file.size > 2 * 1024 * 1024) {
+  if (file.size > 2 * 1024 * 1024) { // 2MB
     return { type: 'error', message: 'El archivo es demasiado grande. El máximo es 2MB.', errors: { profilePicture: ['El archivo no debe superar los 2MB.'] } };
   }
 
-  // Use the admin client to bypass RLS for file uploads/deletes.
-  const supabase = await createSupabaseAdminClient(); // <-- Debe ser await si la función es async
+  // Esperar a que la promesa se resuelva (la función es async)
+  const supabaseAdmin = await createSupabaseAdminClient();
   const fileName = `user-${session.id}-${Date.now()}`;
+  const bucketName = 'fotourl';
 
   try {
-    // Convierte el File a un Blob si es necesario (Node.js no soporta File nativo)
-    const fileBuffer = Buffer.from(await file.arrayBuffer());
-    const { error: uploadError } = await supabase.storage
-      .from('fotourl')
-      .upload(fileName, fileBuffer, {
+    // 1. Upload the new picture
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(bucketName)
+      .upload(fileName, file, {
         cacheControl: '3600',
         upsert: false,
-        contentType: file.type || 'image/jpeg'
       });
 
     if (uploadError) {
@@ -273,18 +259,20 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
       return { type: 'error', message: `Error al subir la imagen: ${uploadError.message}` };
     }
 
-    const { data: publicUrlData } = supabase.storage
-      .from('fotourl')
+    // 2. Get the public URL
+    const { data: publicUrlData } = supabaseAdmin.storage
+      .from(bucketName)
       .getPublicUrl(fileName);
-
+    
     if (!publicUrlData.publicUrl) {
-      await supabase.storage.from('fotourl').remove([fileName]);
+      // Clean up the uploaded file if we can't get a URL
+      await supabaseAdmin.storage.from(bucketName).remove([fileName]);
       return { type: 'error', message: 'No se pudo obtener la URL pública de la imagen.' };
     }
-
+    
     const newProfilePictureUrl = publicUrlData.publicUrl;
-
-    // Actualiza el backend con la nueva URL
+    
+    // 3. Update the URL in your backend
     const backendResponse = await fetch(`${BACKEND_BASE_URL}/usuarios/${session.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -294,23 +282,31 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
 
     if (!backendResponse.ok) {
       const errorData = await backendResponse.json();
-      await supabase.storage.from('fotourl').remove([fileName]);
+      // Clean up the uploaded file if the backend update fails
+      await supabaseAdmin.storage.from(bucketName).remove([fileName]);
       return { type: 'error', message: errorData.error || 'Error al guardar la URL en el backend.' };
     }
 
-    // Borra la foto anterior si existe
+    // 4. If everything was successful, delete the old picture
     if (oldProfilePictureUrl) {
-      const oldFileName = oldProfilePictureUrl.split('/').pop();
-      if (oldFileName) {
-        try {
-          await supabase.storage.from('fotourl').remove([oldFileName]);
-        } catch (deleteError) {
-          console.error("Failed to delete old profile picture, but continuing:", deleteError);
+      const urlParts = oldProfilePictureUrl.split(`/${bucketName}/`);
+      if (urlParts.length > 1) {
+        const oldFilePath = decodeURIComponent(urlParts[1]);
+        if (oldFilePath) {
+          try {
+            const { error: deleteError } = await supabaseAdmin.storage.from(bucketName).remove([oldFilePath]);
+            if (deleteError) {
+                // Log the error but don't fail the whole operation, as the user has their new picture.
+                console.error("Failed to delete old profile picture:", deleteError.message);
+            }
+          } catch (deleteError: any) {
+            console.error("Exception when trying to delete old profile picture:", deleteError.message);
+          }
         }
       }
     }
 
-    // Actualiza la cookie de sesión
+    // 5. Update the user session
     const updatedUser: User = {
       ...session,
       profilePictureUrl: newProfilePictureUrl,
@@ -319,10 +315,10 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
     cookieStore.set('session-data', JSON.stringify(updatedUser), {
         httpOnly: false,
         secure: process.env.NODE_ENV === 'production',
-        maxAge: 60 * 60 * 8,
+        maxAge: 60 * 60 * 8, // 8 hours
         path: '/',
     });
-
+    
     return { type: 'success', message: 'Foto de perfil actualizada.', user: updatedUser };
 
   } catch (error) {
@@ -374,25 +370,28 @@ export async function requestPasswordReset(prevState: ActionResponse | null, for
   if (!validatedFields.success) {
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
+  const { dni } = validatedFields.data;
 
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/usuarios/auth/forgot-password`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dni: validatedFields.data.dni }),
+        body: JSON.stringify({ dni }),
     });
     const data = await response.json();
     if (!response.ok) {
       return { type: 'error', message: data.error || "Error al solicitar reseteo." };
     }
     
-    globalThis.backendResetTokenInfo = { dni: validatedFields.data.dni, token: data.resetToken };
-    
-    return { type: 'success', message: 'Si el DNI es válido, se ha generado un token de reseteo.' };
-  } catch (error) {
+    return { 
+      type: 'success', 
+      message: 'Si el DNI es válido, se ha generado un token de reseteo.', 
+      resetData: { dni, token: data.resetToken } 
+    };
+  } catch (error: any) {
       console.error('Error en requestPasswordReset:', error);
-      return { type: 'error', message: 'Error de conexión al solicitar reseteo.' };
+      return { type: 'error', message: `Error de conexión al solicitar reseteo. Detalles: ${error.message}` };
   }
 }
 

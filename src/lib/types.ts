@@ -52,6 +52,10 @@ export interface ActionResponse {
   user?: User; 
   room?: Room;
   rooms?: Room[];
+  resetData?: {
+    dni: string;
+    token: string;
+  };
 }
 
 export interface EditShiftFormProps {

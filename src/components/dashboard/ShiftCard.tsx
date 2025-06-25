@@ -52,6 +52,7 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(false);
+  const [showInvitationActions, setShowInvitationActions] = useState(false);
   
   const [invitationActionState, invitationFormAction, isInvitationActionPending] = useActionState(respondToShiftInvitation, null);
   const [cancelActionState, cancelFormAction, isCancelActionPending] = useActionState(cancelShift, null);
@@ -142,7 +143,9 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
 
   const isCreator = shift.creatorId === currentUserId;
   const isInvited = shift.invitations.some(inv => inv.userDni === currentUserDni);
-  
+  const myInvitation = shift.invitations.find(inv => inv.userDni === currentUserDni);
+  const isFuture = new Date(shift.date + 'T00:00:00Z') >= new Date(new Date().setHours(0,0,0,0))
+
   const canUserEditShift = 
     isCreator && 
     currentUserRole === 'user' && 
@@ -202,9 +205,9 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
             className={cn(
               "capitalize text-sm px-3 py-1",
               // Color visual fuerte según estado
-              shift.status === "aceptado" && "bg-green-200 text-green-900 border-green-400 dark:bg-green-900/60 dark:text-green-200 dark:border-green-700",
-              shift.status === "pendiente" && "bg-yellow-100 text-yellow-900 border-yellow-400 dark:bg-yellow-900/60 dark:text-yellow-200 dark:border-yellow-700",
-              shift.status === "cancelado" && "bg-red-200 text-red-900 border-red-400 dark:bg-red-900/60 dark:text-red-200 dark:border-red-700",
+              shift.status === "aceptado" && "bg-[#d9f3df] text-[#225b3d] border-[#78c59b] dark:bg-green-900/60 dark:text-green-200 dark:border-green-700",
+              shift.status === "pendiente" && "bg-[#fff4d6] text-[#7b5d14] border-[#e6c06b] dark:bg-yellow-900/60 dark:text-yellow-200 dark:border-yellow-700",
+              shift.status === "cancelado" && "bg-[#f9d9d9] text-[#732727] border-[#e78b8b] dark:bg-red-900/60 dark:text-red-200 dark:border-red-700",
               (isPast || isCancelled) && "bg-[#eaeacc] dark:bg-[#23281b]/70 border-accent/20"
             )}
           >
@@ -333,7 +336,7 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
              <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" size="sm" className="flex-1 sm:flex-none">
-                  <Trash2 className="w-4 h-4 mr-1" /> Cancelar
+                  <Trash2 className="w-4 h-4" />
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -353,22 +356,51 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
             </AlertDialog>
           )}
       
-          {isInvited && currentUserRole === 'user' && !isPast && (shift.status === 'pendiente' || shift.status === 'aceptado') && (
+          {isInvited && currentUserRole === 'user' && !isPast && shift.status === 'pendiente' && (
             <>
-              {shift.status === 'pendiente' && (
-                <>
-                  <Button size="sm" onClick={() => handleInvitationResponse('aceptar')} disabled={isInvitationActionPending} className="bg-primary hover:bg-primary/80 flex-1 sm:flex-none">
+              {!showInvitationActions ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 sm:flex-none"
+                  onClick={() => setShowInvitationActions(true)}
+                >
+                  Cambiar respuesta
+                </Button>
+              ) : (
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      handleInvitationResponse('aceptar');
+                      setShowInvitationActions(false);
+                    }}
+                    disabled={isInvitationActionPending}
+                    className="bg-primary hover:bg-primary/80 flex-1 sm:flex-none"
+                  >
                     <CheckCircle className="w-4 h-4 mr-1" /> Aceptar
                   </Button>
-                  <Button variant="destructive" size="sm" onClick={() => handleInvitationResponse('rechazar')} disabled={isInvitationActionPending} className="flex-1 sm:flex-none">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => {
+                      handleInvitationResponse('rechazar');
+                      setShowInvitationActions(false);
+                    }}
+                    disabled={isInvitationActionPending}
+                    className="flex-1 sm:flex-none"
+                  >
                     <XCircle className="w-4 h-4 mr-1" /> Rechazar
                   </Button>
-                </>
-              )}
-              {shift.status === 'aceptado' && (
-                 <Button variant="outline" size="sm" onClick={() => handleInvitationResponse('rechazar')} disabled={isInvitationActionPending} className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive flex-1 sm:flex-none">
-                  <LogOut className="w-4 h-4 mr-1" /> No Asistir
-                </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowInvitationActions(false)}
+                    className="flex-1 sm:flex-none"
+                  >
+                    Cancelar
+                  </Button>
+                </div>
               )}
             </>
           )}

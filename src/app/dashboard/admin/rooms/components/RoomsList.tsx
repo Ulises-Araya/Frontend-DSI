@@ -69,7 +69,7 @@ export function RoomsList({ rooms, onRoomChange }: RoomsListProps) {
   if (!rooms || rooms.length === 0) {
     return (
       <div className="text-center py-12 bg-card/50 rounded-lg border border-dashed border-border">
-        <Image src="https://placehold.co/128x128.png" alt="No rooms found" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="empty room illustration"/>
+        <Image src="/vacio.png" alt="No rooms found" width={194} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="empty room illustration"/>
         <p className="text-xl text-muted-foreground">No hay salas/áreas configuradas.</p>
         <p className="text-sm text-muted-foreground/80">Puedes agregar nuevas salas usando el botón de arriba.</p>
       </div>

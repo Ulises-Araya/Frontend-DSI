@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo } from 'react';
@@ -42,9 +41,9 @@ export default function UserDashboardPage() {
       return;
     }
     setUser(fetchedUser);
-    const fetchedShifts = await getUserShifts(); 
-    const created = fetchedShifts.filter(shift => shift.creatorId === fetchedUser.id);
-    setUserCreatedShifts(created);
+    // Trae TODOS los turnos relacionados (creados o invitado)
+    const fetchedShifts = await getUserShifts();
+    setUserCreatedShifts(fetchedShifts); // <-- NO filtrar aquí, guarda todos los turnos relacionados
     setIsLoading(false);
   }
 
@@ -58,40 +57,86 @@ export default function UserDashboardPage() {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
   }, []);
 
-  const turnosActuales = useMemo(() => {
-    return userCreatedShifts
-      .filter(s => {
-        const shiftDate = new Date(s.date + 'T00:00:00Z');
-        return shiftDate >= todayForCompare && (s.status === 'pendiente' || s.status === 'aceptado');
-      })
-      .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [userCreatedShifts, todayForCompare]);
+  // Utilidad para saber si un turno es pasado
+  const isPast = (date: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const shiftDate = new Date(date + 'T00:00:00Z');
+    return shiftDate < today;
+  };
 
-  const historialDeTurnosCreados = useMemo(() => {
-    return userCreatedShifts
-      .filter(s => {
-        const shiftDate = new Date(s.date + 'T00:00:00Z');
-        return shiftDate < todayForCompare || s.status === 'cancelado';
-      })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [userCreatedShifts, todayForCompare]);
+  // Turnos creados por el usuario (no cancelados y futuros)
+  const createdShifts = userCreatedShifts.filter(s =>
+    s.creatorId === user?.id &&
+    s.status !== 'cancelado' &&
+    !isPast(s.date)
+  );
 
-  const totalHistoryPages = useMemo(() => {
-    return Math.ceil(historialDeTurnosCreados.length / ITEMS_PER_PAGE_HISTORY);
-  }, [historialDeTurnosCreados.length]);
+  // Turnos a los que fue invitado, aceptó, no cancelados y futuros
+  const invitedAcceptedShifts = userCreatedShifts.filter(s =>
+    s.creatorId !== user?.id &&
+    s.invitations.some(inv => inv.userDni === user?.dni && inv.status === 'aceptado') &&
+    s.status !== 'cancelado' &&
+    !isPast(s.date)
+  );
 
-  const paginatedHistorialShifts = useMemo(() => {
-    const startIndex = (currentHistoryPage - 1) * ITEMS_PER_PAGE_HISTORY;
-    const endIndex = startIndex + ITEMS_PER_PAGE_HISTORY;
-    return historialDeTurnosCreados.slice(startIndex, endIndex);
-  }, [historialDeTurnosCreados, currentHistoryPage]);
+  // Turnos actuales:
+  // - Creados por el usuario, no cancelados, no pasados
+  // - Invitado y aceptado o rechazado, no cancelados, no pasados
+  //   (los rechazados van al final)
+  const turnosActuales = userCreatedShifts
+    .filter(s => {
+      const esCreador = s.creatorId === user?.id;
+      const invitacion = s.invitations.find(inv => inv.userDni === user?.dni);
+      const aceptadoComoInvitado = invitacion && invitacion.status === 'aceptado';
+      const rechazadoComoInvitado = invitacion && invitacion.status === 'rechazado';
+      // Mostrar todos los turnos donde soy creador o fui invitado (aceptado o rechazado), no cancelados, no pasados
+      return (
+        (esCreador ||
+          (invitacion && (aceptadoComoInvitado || rechazadoComoInvitado))
+        ) &&
+        s.status !== 'cancelado' &&
+        !isPast(s.date)
+      );
+    })
+    .sort((a, b) => {
+      // Los rechazados van al final
+      const invitacionA = a.invitations.find(inv => inv.userDni === user?.dni);
+      const invitacionB = b.invitations.find(inv => inv.userDni === user?.dni);
+      const rechazadoA = invitacionA && invitacionA.status === 'rechazado';
+      const rechazadoB = invitacionB && invitacionB.status === 'rechazado';
+      if (rechazadoA && !rechazadoB) return 1;
+      if (!rechazadoA && rechazadoB) return -1;
+      // El resto por fecha ascendente (más próximo primero)
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
+
+  // Historial: todos los turnos creados o invitado, que ya pasaron o están cancelados
+  // (no incluye los rechazados)
+  const historialDeTurnos = userCreatedShifts
+    .filter(s => {
+      const invitacion = s.invitations.find(inv => inv.userDni === user?.dni);
+      const rechazadoComoInvitado = invitacion && invitacion.status === 'rechazado';
+      return (
+        (isPast(s.date) || s.status === 'cancelado') &&
+        !rechazadoComoInvitado
+      );
+    })
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const totalHistoryPages = Math.ceil(historialDeTurnos.length / ITEMS_PER_PAGE_HISTORY);
+
+  const paginatedHistorialShifts = historialDeTurnos.slice(
+    (currentHistoryPage - 1) * ITEMS_PER_PAGE_HISTORY,
+    currentHistoryPage * ITEMS_PER_PAGE_HISTORY
+  );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 p-6 pt-2 rounded-xl">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <h1 className="text-3xl md:text-4xl font-headline text-primary flex items-center">
           <BookOpen className="w-10 h-10 mr-3" /> 
-          Mis Turnos Creados
+          Mis Turnos
         </h1>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
@@ -123,7 +168,7 @@ export default function UserDashboardPage() {
         </div>
       </div>
       
-      <Separator />
+      <Separator className="my-2 bg-[#bfcab3] dark:bg-muted opacity-60" style={{ boxShadow: "0 2px 8px 0 rgba(86, 122, 86, 0.31)" }} />
 
       {isLoading || !user ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -142,56 +187,56 @@ export default function UserDashboardPage() {
       ) : (
         <>
           <section>
-            <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
-              <CalendarClock className="w-6 h-6 mr-3 text-accent" />
+            <h2 className="text-2xl font-headline text-[#3E4D2C] dark:text-foreground mb-4 flex items-center">
+              <CalendarClock className="w-6 h-6 mr-3 text-[#8ebe8ee6] dark:text-accent" />
               Turnos Actuales
             </h2>
             {turnosActuales.length > 0 ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {turnosActuales.map(shift => (
-                  user.dni && 
-                  <ShiftCard 
-                    key={shift.id} 
-                    shift={shift} 
-                    currentUserRole="user" 
+                  user.dni &&
+                  <ShiftCard
+                    key={shift.id}
+                    shift={shift}
+                    currentUserRole="user"
                     currentUserId={user.id}
                     currentUserDni={user.dni}
-                    onShiftUpdate={() => { loadData(); setCurrentHistoryPage(1);}} 
+                    onShiftUpdate={() => { loadData(); setCurrentHistoryPage(1); }}
                   />
                 ))}
               </div>
             ) : (
               <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
-                <Image src="https://placehold.co/128x128.png" alt="Empty state illustration" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="empty calendar" />
+                <Image src="/vacio.png" alt="Empty state illustration" width={194} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="empty calendar" />
                 <p className="text-muted-foreground">No tienes turnos actuales creados.</p>
                 <p className="text-sm text-muted-foreground/80">Los turnos activos para hoy o fechas futuras que hayas creado aparecerán aquí.</p>
               </div>
             )}
           </section>
 
-          <Separator />
+          <Separator className="my-2 bg-[#bfcab3] dark:bg-muted opacity-60" style={{ boxShadow: "0 2px 8px 0 rgba(86, 122, 86, 0.31)" }} />
 
           <section>
-            <h2 className="text-2xl font-headline text-foreground/80 mb-4 flex items-center">
-              <Archive className="w-6 h-6 mr-3 text-accent" />
-              Historial de Turnos Creados
+            <h2 className="text-2xl font-headline text-[#3E4D2C] dark:text-foreground mb-4 flex items-center">
+              <Archive className="w-6 h-6 mr-3 text-[#8ebe8ee6] dark:text-accent" />
+              Historial de Turnos
             </h2>
-            {historialDeTurnosCreados.length > 0 ? (
+            {historialDeTurnos.length > 0 ? (
               <>
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                   {paginatedHistorialShifts.map(shift => (
                     user.dni &&
-                    <ShiftCard 
-                      key={shift.id} 
-                      shift={shift} 
+                    <ShiftCard
+                      key={shift.id}
+                      shift={shift}
                       currentUserRole="user"
-                      currentUserId={user.id} 
+                      currentUserId={user.id}
                       currentUserDni={user.dni}
-                      onShiftUpdate={() => { loadData(); setCurrentHistoryPage(1);}} 
+                      onShiftUpdate={() => { loadData(); setCurrentHistoryPage(1); }}
                     />
                   ))}
                 </div>
-                {historialDeTurnosCreados.length > ITEMS_PER_PAGE_HISTORY && (
+                {historialDeTurnos.length > ITEMS_PER_PAGE_HISTORY && (
                   <div className="flex justify-center items-center gap-4 mt-6">
                     <Button
                       variant="outline"
@@ -219,7 +264,7 @@ export default function UserDashboardPage() {
               </>
             ) : (
               <div className="text-center py-10 bg-card/50 rounded-lg border border-dashed border-border">
-                 <Image src="https://placehold.co/128x128.png" alt="Empty history illustration" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="archive box empty" />
+                 <Image src="/vacio.png" alt="Empty history illustration" width={194} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="archive box empty" />
                 <p className="text-muted-foreground">No tienes turnos creados en tu historial.</p>
                 <p className="text-sm text-muted-foreground/80">Los turnos pasados o cancelados que hayas creado aparecerán aquí.</p>
               </div>

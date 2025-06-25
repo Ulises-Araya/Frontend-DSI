@@ -24,10 +24,6 @@ export default function Home() {
         </Button>
       </div>
 
-      <div className="absolute bottom-4 right-4 flex items-center space-x-2 text-sm text-muted-foreground">
-        <Image src="https://placehold.co/100x100.png" alt="Mushrooms illustration" width={40} height={40} className="rounded-full opacity-70" data-ai-hint="mushrooms illustration" />
-        <Image src="https://placehold.co/100x100.png" alt="Potion bottle illustration" width={30} height={30} className="rounded-full opacity-70" data-ai-hint="potion bottle" />
-      </div>
        <style jsx global>{`
         @keyframes shimmer {
           0% { transform: translateX(-100%); }

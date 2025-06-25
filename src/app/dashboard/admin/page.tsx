@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo } from 'react';
@@ -89,6 +88,19 @@ export default function AdminDashboardPage() {
     });
   }, [allShifts, searchTerm, filterStatus, filterArea]);
 
+  const now = new Date();
+  const activeShifts = filteredShifts.filter(s =>
+    s.status !== 'cancelado' && new Date(s.date + 'T00:00:00Z') >= now
+  );
+  const otherShifts = filteredShifts.filter(s =>
+    s.status === 'cancelado' || new Date(s.date + 'T00:00:00Z') < now
+  );
+
+  const orderedShifts = [
+    ...activeShifts.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()),
+    ...otherShifts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  ];
+
   const totalAdminPages = useMemo(() => {
     return Math.ceil(filteredShifts.length / ITEMS_PER_PAGE_ADMIN);
   }, [filteredShifts.length]);
@@ -96,8 +108,8 @@ export default function AdminDashboardPage() {
   const paginatedAdminShifts = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE_ADMIN;
     const endIndex = startIndex + ITEMS_PER_PAGE_ADMIN;
-    return filteredShifts.slice(startIndex, endIndex);
-  }, [filteredShifts, currentPage]);
+    return orderedShifts.slice(startIndex, endIndex);
+  }, [orderedShifts, currentPage]);
   
   const clearFilters = () => {
     setSearchTerm('');
@@ -184,7 +196,7 @@ export default function AdminDashboardPage() {
             </Card>
           ))}
         </div>
-      ) : filteredShifts.length > 0 ? (
+      ) : orderedShifts.length > 0 ? (
         <>
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {paginatedAdminShifts.map(shift => (
@@ -199,7 +211,7 @@ export default function AdminDashboardPage() {
               />
             ))}
           </div>
-          {filteredShifts.length > ITEMS_PER_PAGE_ADMIN && (
+          {orderedShifts.length > ITEMS_PER_PAGE_ADMIN && (
             <div className="flex justify-center items-center gap-4 mt-8">
               <Button
                 variant="outline"
@@ -227,7 +239,7 @@ export default function AdminDashboardPage() {
         </>
       ) : (
         <div className="text-center py-12 bg-card/50 rounded-lg border border-dashed border-border">
-          <Image src="https://placehold.co/128x128.png" alt="No results illustration" width={80} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="magnifying glass empty"/>
+          <Image src="/vacio.png" alt="No results illustration" width={194} height={80} className="mx-auto mb-4 opacity-60" data-ai-hint="magnifying glass empty"/>
           <p className="text-xl text-muted-foreground">No se encontraron turnos.</p>
           <p className="text-sm text-muted-foreground/80">Intenta ajustar los filtros o revisa más tarde.</p>
         </div>

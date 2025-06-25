@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useActionState, useEffect, useTransition } from "react";
+import { useActionState, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -23,8 +23,10 @@ const ForgotPasswordSchema = z.object({
 type ForgotPasswordFormValues = z.infer<typeof ForgotPasswordSchema>;
 
 export function ForgotPasswordForm() {
-  const [state, formAction, isActionPending] = useActionState<ActionResponse, FormData>(requestPasswordReset, null);
-  const [, startTransition] = useTransition();
+  const [state, formAction, isActionPending] = useActionState<ActionResponse, FormData>(
+    requestPasswordReset,
+    null
+  );
   const { toast } = useToast();
   const router = useRouter();
 
@@ -47,23 +49,14 @@ export function ForgotPasswordForm() {
         title: "Solicitud Enviada",
         description: state.message,
       });
-      // Para el entorno con backend, el token real se pasa a través de globalThis.backendResetTokenInfo
-      if (globalThis.backendResetTokenInfo?.dni && globalThis.backendResetTokenInfo?.token) {
-        const { dni, token } = globalThis.backendResetTokenInfo;
+      // Redirect using data from the action state
+      if (state.resetData?.dni && state.resetData?.token) {
+        const { dni, token } = state.resetData;
         router.push(`/reset-password?dni=${encodeURIComponent(dni)}&token=${encodeURIComponent(token)}`);
-        globalThis.backendResetTokenInfo = null; // Limpiar después de usar
       }
       form.reset();
     }
   }, [state, toast, router, form]);
-
-  const onValidSubmit = (values: ForgotPasswordFormValues) => {
-    const formData = new FormData();
-    formData.append('dni', values.dni);
-    startTransition(() => {
-      formAction(formData);
-    });
-  };
 
   return (
     <Card className="w-full max-w-md shadow-2xl bg-card/90 backdrop-blur-sm border-primary/30">
@@ -72,12 +65,13 @@ export function ForgotPasswordForm() {
         <CardTitle className="font-headline text-3xl">Recuperar Contraseña</CardTitle>
         <CardDescription className="text-muted-foreground">Ingresa tu DNI para iniciar el proceso.</CardDescription>
       </CardHeader>
-      <form onSubmit={form.handleSubmit(onValidSubmit)}>
+      <form action={formAction}>
         <CardContent className="space-y-6">
           <div className="space-y-2">
             <Label htmlFor="dni" className="text-foreground/80">DNI</Label>
             <Input
               id="dni"
+              name="dni"
               type="text"
               placeholder="Tu número de DNI"
               {...form.register("dni")}

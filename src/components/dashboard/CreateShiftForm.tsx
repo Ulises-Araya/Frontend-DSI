@@ -19,7 +19,7 @@ import { es } from 'date-fns/locale';
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { Room } from "@/lib/types";
+import type { Room, User } from "@/lib/types";
 
 const DniObjectSchema = z.object({
   value: z.string().regex(/^\d{7,8}$/, "DNI inválido (7-8 caracteres)"),
@@ -46,11 +46,12 @@ const CreateShiftFormSchema = z.object({
 type CreateShiftFormValues = z.infer<typeof CreateShiftFormSchema>;
 
 interface CreateShiftFormProps {
+  currentUser: User | null;
   onShiftCreated?: () => void;
   setOpen?: (open: boolean) => void;
 }
 
-export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProps) {
+export function CreateShiftForm({ currentUser, onShiftCreated, setOpen }: CreateShiftFormProps) {
   const [state, formAction, isActionPending] = useActionState(createShift, null);
   const { toast } = useToast();
   const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
@@ -117,6 +118,10 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
 
   const handleAddInvitedDni = () => {
     setDniInputError(null);
+    if (currentUser && currentDniInput === currentUser.dni) {
+      setDniInputError("No puedes invitarte a ti mismo.");
+      return;
+    }
     const dniPattern = /^\d{7,8}$/;
     if (!dniPattern.test(currentDniInput)) {
       setDniInputError("DNI inválido (debe tener 7-8 dígitos numéricos).");
@@ -296,5 +301,3 @@ export function CreateShiftForm({ onShiftCreated, setOpen }: CreateShiftFormProp
     </ScrollArea>
   );
 }
-
-    

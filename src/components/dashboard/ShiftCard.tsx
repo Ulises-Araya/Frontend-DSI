@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Shift, ShiftStatus, UserRole, Room, InvitationStatus } from '@/lib/types';
@@ -139,6 +138,7 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
   today.setHours(0, 0, 0, 0);
   const shiftDate = new Date(shift.date + 'T00:00:00Z'); // Ensure UTC for comparison
   const isPast = shiftDate < today;
+  const isCancelled = shift.status === 'cancelado';
 
   const isCreator = shift.creatorId === currentUserId;
   const isInvited = shift.invitations.some(inv => inv.userDni === currentUserDni);
@@ -185,66 +185,84 @@ export function ShiftCard({ shift, currentUserRole, currentUserId, currentUserDn
 
   return (
     <Card className={cn(
-        "w-full shadow-lg hover:shadow-xl transition-shadow duration-300 bg-card/80 backdrop-blur-sm border-primary/20 hover:border-primary/40 flex flex-col",
-        isPast && "opacity-70 bg-card/60 hover:shadow-lg"
+        "w-full shadow-lg hover:shadow-xl transition-shadow duration-300 backdrop-blur-sm border-primary/20 hover:border-primary/40 flex flex-col",
+        "bg-[#f9f9dc] dark:bg-[#23281b]",
+        (isPast || isCancelled) && "bg-[#eaeacc] dark:bg-[#23281b]/70 border border-accent/20"
     )}>
       <CardHeader>
         <div className="flex justify-between items-start">
-          <CardTitle className="font-headline text-2xl text-primary mb-1">{shift.theme}</CardTitle>
-          <Badge variant={getStatusVariant(shift.status)} className="capitalize text-sm px-3 py-1">{shift.status}</Badge>
+          <CardTitle className={cn(
+            "font-headline text-2xl mb-1",
+            "text-primary dark:text-[#b7e7b7]"
+          )}>
+            {shift.theme}
+          </CardTitle>
+          <Badge
+            variant={getStatusVariant(shift.status)}
+            className={cn(
+              "capitalize text-sm px-3 py-1",
+              // Color visual fuerte según estado
+              shift.status === "aceptado" && "bg-green-200 text-green-900 border-green-400 dark:bg-green-900/60 dark:text-green-200 dark:border-green-700",
+              shift.status === "pendiente" && "bg-yellow-100 text-yellow-900 border-yellow-400 dark:bg-yellow-900/60 dark:text-yellow-200 dark:border-yellow-700",
+              shift.status === "cancelado" && "bg-red-200 text-red-900 border-red-400 dark:bg-red-900/60 dark:text-red-200 dark:border-red-700",
+              (isPast || isCancelled) && "bg-[#eaeacc] dark:bg-[#23281b]/70 border-accent/20"
+            )}
+          >
+            {shift.status.charAt(0).toUpperCase() + shift.status.slice(1)}
+          </Badge>
         </div>
         <div className="flex flex-col gap-1">
-            <CardDescription className="text-muted-foreground flex items-center gap-2">
+            <CardDescription className="text-muted-foreground dark:text-[#b7e7b7]/80 flex items-center gap-2">
               <MapPin className="w-4 h-4" /> {shift.area}
             </CardDescription>
             {isInvited && shift.creatorFullName && (
-              <CardDescription className="text-xs text-accent flex items-center gap-1">
+              <CardDescription className="text-xs text-accent dark:text-[#b7e7b7] flex items-center gap-1">
                 <UserPlus className="w-3 h-3" /> Invitado por: {shift.creatorFullName}
               </CardDescription>
             )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-3 text-foreground/90 flex-grow">
+      <CardContent className="space-y-3 text-foreground/90 dark:text-[#e6ffe6] flex-grow">
         <div className="flex items-center gap-2">
-          <CalendarDays className="w-5 h-5 text-accent" />
+          <CalendarDays className="w-5 h-5 text-accent dark:text-[#b7e7b7]" />
           <span>{new Date(shift.date + 'T00:00:00Z').toLocaleDateString('es-AR', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}</span>
         </div>
         <div className="flex items-center gap-2">
-          <Clock className="w-5 h-5 text-accent" />
+          <Clock className="w-5 h-5 text-accent dark:text-[#b7e7b7]" />
           <span>{shift.startTime} - {shift.endTime}</span>
         </div>
         <div className="flex items-center gap-2">
-          <Users className="w-5 h-5 text-accent" />
+          <Users className="w-5 h-5 text-accent dark:text-[#b7e7b7]" />
           <span>{shift.participantCount} Integrante(s)</span>
         </div>
         
         {shift.notes && (
           <div className="flex items-start gap-2 pt-1">
-            <MessageSquare className="w-5 h-5 text-accent mt-1 flex-shrink-0" />
-            <p className="text-sm italic bg-muted/50 p-2 rounded-md break-words">{shift.notes}</p>
+            <MessageSquare className="w-5 h-5 text-accent dark:text-[#b7e7b7] mt-1 flex-shrink-0" />
+            <p className="text-sm italic bg-muted/50 dark:bg-[#2e3a23] p-2 rounded-md break-words">{shift.notes}</p>
           </div>
         )}
 
         {currentUserRole === 'admin' && shift.creatorFullName && !isCreator && (
            <div className="flex items-center gap-2 pt-2 border-t border-border/50 mt-3">
-            <UserCircle className="w-5 h-5 text-accent" />
+            <UserCircle className="w-5 h-5 text-accent dark:text-[#b7e7b7]" />
             <span>Creador: {shift.creatorFullName} (DNI: {shift.creatorDni})</span>
           </div>
         )}
 
          {shift.invitations && shift.invitations.length > 0 && (
           <div className="pt-2 border-t border-border/50 mt-3">
-            <p className="text-sm font-medium text-accent mb-1">Invitados:</p>
+            <p className="text-sm font-medium text-accent dark:text-[#b7e7b7] mb-1">Invitados:</p>
             <ul className="space-y-1">
                 {shift.invitations.map(inv => {
                     const statusInfo = getInvitationStatusInfo(inv.status);
                     return (
                         <li key={inv.id} className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">
+                            <span className="text-muted-foreground dark:text-[#b7e7b7]/80">
                                 DNI: {inv.userDni}
                                 {inv.userDni === currentUserDni ? " (Tú)" : ""}
                             </span>
-                            <span className={cn("flex items-center gap-1.5 font-medium", statusInfo.color)}>
+                            <span className={cn("flex items-center gap-1.5 font-medium", statusInfo.color, "dark:text-[#b7e7b7]")}>
                                 <statusInfo.icon className="w-3.5 h-3.5" />
                                 {statusInfo.text}
                             </span>

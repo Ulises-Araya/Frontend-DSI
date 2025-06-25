@@ -1,10 +1,9 @@
-
 "use server";
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import type { Shift, ShiftStatus, User, ActionResponse as BaseActionResponse, Room, UserRole, BackendShift, BackendRoom, BackendInvitation, InvitationStatus, BackendUser } from './types';
-import { createSupabaseServerClient } from './supabase/server';
+import { createSupabaseAdminClient } from './supabase/server';
 
 const BACKEND_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_BASE_URL || 'http://localhost:3000/api';
 
@@ -145,11 +144,11 @@ export async function registerUser(prevState: ActionResponse | null, formData: F
     const data = await response.json();
 
     if (!response.ok || response.status !== 201) {
-      const fieldErrors: Record<string, string[]> = {};
-      if (data.error && typeof data.error === 'string') {
-        if (data.error.toLowerCase().includes('dni') || data.error.toLowerCase().includes('email')) fieldErrors.dni = [data.error];
+       const message = data.error || 'Error al registrar desde el backend.';
+       if (message.toLowerCase().includes('unique constraint') || message.toLowerCase().includes('ya existe') || message.toLowerCase().includes('registrados')) {
+        return { type: 'error', message: "El DNI o el email ya se encuentran registrados.", errors: { dni: ["El DNI o el email ya se encuentran registrados."] } };
       }
-      return { type: 'error', message: data.error || 'Error al registrar desde el backend.', errors: fieldErrors };
+      return { type: 'error', message: message };
     }
     return { type: 'success', message: 'Registro exitoso. Por favor, inicia sesión.' };
   } catch (error) {
@@ -165,16 +164,29 @@ export async function getCurrentUser(): Promise<User | null> {
 
 export async function logoutUser() {
   try {
-    await fetch(`${BACKEND_BASE_URL}/auth/logout`, {
+    // Intenta llamar al backend, pero ignora cualquier error de red o timeout
+    await Promise.race([
+      fetch(`${BACKEND_BASE_URL}/auth/logout`, {
         method: 'POST',
         credentials: 'include',
-    });
+        // timeout de 2 segundos para evitar cuelgues si el backend está caído
+        signal: AbortSignal.timeout ? AbortSignal.timeout(2000) : undefined
+      }),
+      new Promise((resolve) => setTimeout(resolve, 2000)) // fallback si fetch no soporta timeout
+    ]);
   } catch (error) {
-      console.error("Error calling backend logout, clearing session anyway.", error);
+    // Silencia cualquier error, solo loguea si es útil para debug
+    // console.error("Error calling backend logout, clearing session anyway.", error);
   }
-  
+
   const cookieStore = await cookies();
-  cookieStore.delete('session-data');
+  // Usa .set con maxAge 0 para borrar la cookie en todos los navegadores
+  cookieStore.set('session-data', '', {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 0,
+    path: '/',
+  });
   redirect('/login');
 }
 
@@ -237,20 +249,23 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
   if (!file || file.size === 0) {
     return { type: 'error', message: 'No se ha seleccionado ningún archivo.' };
   }
-  if (file.size > 2 * 1024 * 1024) { // 2MB
+  if (file.size > 2 * 1024 * 1024) {
     return { type: 'error', message: 'El archivo es demasiado grande. El máximo es 2MB.', errors: { profilePicture: ['El archivo no debe superar los 2MB.'] } };
   }
 
-
-  const supabase = await createSupabaseServerClient();
+  // Use the admin client to bypass RLS for file uploads/deletes.
+  const supabase = await createSupabaseAdminClient(); // <-- Debe ser await si la función es async
   const fileName = `user-${session.id}-${Date.now()}`;
 
   try {
+    // Convierte el File a un Blob si es necesario (Node.js no soporta File nativo)
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
     const { error: uploadError } = await supabase.storage
-      .from('fotourl') // Bucket name
-      .upload(fileName, file, { // Use just the file name as the path
+      .from('fotourl')
+      .upload(fileName, fileBuffer, {
         cacheControl: '3600',
         upsert: false,
+        contentType: file.type || 'image/jpeg'
       });
 
     if (uploadError) {
@@ -260,14 +275,16 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
 
     const { data: publicUrlData } = supabase.storage
       .from('fotourl')
-      .getPublicUrl(fileName); // Get URL for the new file name
-    
+      .getPublicUrl(fileName);
+
     if (!publicUrlData.publicUrl) {
+      await supabase.storage.from('fotourl').remove([fileName]);
       return { type: 'error', message: 'No se pudo obtener la URL pública de la imagen.' };
     }
-    
+
     const newProfilePictureUrl = publicUrlData.publicUrl;
-    
+
+    // Actualiza el backend con la nueva URL
     const backendResponse = await fetch(`${BACKEND_BASE_URL}/usuarios/${session.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -281,6 +298,7 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
       return { type: 'error', message: errorData.error || 'Error al guardar la URL en el backend.' };
     }
 
+    // Borra la foto anterior si existe
     if (oldProfilePictureUrl) {
       const oldFileName = oldProfilePictureUrl.split('/').pop();
       if (oldFileName) {
@@ -292,6 +310,7 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
       }
     }
 
+    // Actualiza la cookie de sesión
     const updatedUser: User = {
       ...session,
       profilePictureUrl: newProfilePictureUrl,
@@ -303,7 +322,7 @@ export async function updateProfilePicture(prevState: ActionResponse | null, for
         maxAge: 60 * 60 * 8,
         path: '/',
     });
-    
+
     return { type: 'success', message: 'Foto de perfil actualizada.', user: updatedUser };
 
   } catch (error) {
@@ -559,12 +578,14 @@ export async function getUserShifts(): Promise<Shift[]> {
         
         const allShifts: BackendShift[] = await response.json();
 
-        const userCreatedShifts = allShifts.filter(shift => shift.Usuario?.id.toString() === session.id);
-        const userInvitedShifts = allShifts.filter(shift => 
+        // This includes shifts created by the user OR shifts they are invited to.
+        const userRelatedShifts = allShifts.filter(shift => 
+            shift.Usuario?.id.toString() === session.id ||
             shift.InvitadosTurnos.some(inv => inv.Usuario?.dni === session.dni)
         );
 
-        const uniqueShifts = [...userCreatedShifts, ...userInvitedShifts].reduce((acc, current) => {
+        // Deduplicate in case a user is invited to their own shift (shouldn't happen but defensive)
+         const uniqueShifts = userRelatedShifts.reduce((acc, current) => {
             if (!acc.find(item => item.id === current.id)) {
                 acc.push(current);
             }
@@ -730,6 +751,7 @@ function mapBackendShiftToFrontend(backendShift: BackendShift): Shift {
     const creator = backendShift.Usuario;
     const invitations = backendShift.InvitadosTurnos || [];
     
+    // Participant count is the creator + only accepted invitations
     const acceptedCount = invitations.filter((inv: BackendInvitation) => inv.estado_invitacion === 'aceptado').length;
     const participantCount = 1 + acceptedCount;
 
@@ -739,7 +761,7 @@ function mapBackendShiftToFrontend(backendShift: BackendShift): Shift {
         startTime: backendShift.hora_inicio.substring(0, 5),
         endTime: backendShift.hora_fin.substring(0, 5),
         theme: backendShift.tematica,
-        participantCount: participantCount,
+        participantCount: participantCount, // Corrected count
         notes: backendShift.observaciones,
         area: backendShift.Sala?.nombre || 'Sala no especificada',
         status: backendShift.estado,

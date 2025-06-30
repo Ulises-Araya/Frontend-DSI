@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect } from 'react';
@@ -24,8 +23,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Save, PlusCircle } from 'lucide-react';
 
 const RoomFormSchema = z.object({
-  name: z.string().min(3, "Nombre debe tener al menos 3 caracteres.").max(50, "Nombre no puede exceder los 50 caracteres."),
-  capacity: z.coerce.number().int().min(1, "La capacidad debe ser al menos 1."),
+  nombre: z.string().min(3, "Nombre debe tener al menos 3 caracteres.").max(50, "Nombre no puede exceder los 50 caracteres."),
+  capacidad: z.coerce.number().int().min(1, "La capacidad debe ser al menos 1."),
 });
 type RoomFormValues = z.infer<typeof RoomFormSchema>;
 
@@ -50,16 +49,16 @@ export function RoomFormDialog({ isOpen, setIsOpen, room, onRoomSaved }: RoomFor
   const form = useForm<RoomFormValues>({
     resolver: zodResolver(RoomFormSchema),
     defaultValues: {
-      name: room?.name || '',
-      capacity: room?.capacity || 10,
+      nombre: room?.name || '',
+      capacidad: room?.capacity || 10,
     },
   });
 
   useEffect(() => {
     if (room && isEditing) {
-      form.reset({ name: room.name, capacity: room.capacity });
+      form.reset({ nombre: room.name, capacidad: room.capacity });
     } else {
-      form.reset({ name: '', capacity: 10 });
+      form.reset({ nombre: '', capacidad: 10 });
     }
   }, [room, form, isOpen, isEditing]);
 
@@ -69,23 +68,33 @@ export function RoomFormDialog({ isOpen, setIsOpen, room, onRoomSaved }: RoomFor
         title: "Sala Agregada",
         description: actionState.message,
       });
-      onRoomSaved();
-      setIsOpen(false);
-      form.reset({ name: '', capacity: 10 });
+      setIsOpen(false); // Cierra el modal antes de recargar
+      form.reset({ nombre: '', capacidad: 10 });
+      setTimeout(() => { onRoomSaved(); }, 0); // Llama a onRoomSaved solo una vez, después de cerrar
     } else if (actionState?.type === 'error') {
       toast({
         variant: "destructive",
         title: "Error",
         description: actionState.message,
       });
-      if (actionState.errors?.name) {
-        form.setError("name", { type: "server", message: actionState.errors.name[0] });
+      if (actionState.errors?.nombre) {
+        form.setError("nombre", { type: "server", message: actionState.errors.nombre[0] });
       }
-      if (actionState.errors?.capacity) {
-        form.setError("capacity", { type: "server", message: actionState.errors.capacity[0] });
+      if (actionState.errors?.capacidad) {
+        form.setError("capacidad", { type: "server", message: actionState.errors.capacidad[0] });
       }
     }
+    // Limpia el estado de actionState al cerrar el modal
+    // (esto requiere que uses un estado local para actionState si sigue el problema)
   }, [actionState, toast, onRoomSaved, setIsOpen, form]);
+
+  // Limpia errores y estado al cerrar el modal
+  useEffect(() => {
+    if (!isOpen) {
+      form.clearErrors();
+      form.reset({ nombre: '', capacidad: 10 });
+    }
+  }, [isOpen, form]);
 
   const onSubmit = (values: RoomFormValues) => {
     if (isEditing) {
@@ -93,8 +102,8 @@ export function RoomFormDialog({ isOpen, setIsOpen, room, onRoomSaved }: RoomFor
         return;
     }
     const formData = new FormData();
-    formData.append('name', values.name);
-    formData.append('capacity', values.capacity.toString());
+    formData.append('nombre', values.nombre);
+    formData.append('capacidad', values.capacidad.toString());
 
     startTransition(() => {
         formAction(formData);
@@ -114,37 +123,37 @@ export function RoomFormDialog({ isOpen, setIsOpen, room, onRoomSaved }: RoomFor
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
           <div>
-            <Label htmlFor="name" className="text-left text-foreground/80">
+            <Label htmlFor="nombre" className="text-left text-foreground/80">
               Nombre de la Sala/Área
             </Label>
             <Input
-              id="name"
-              {...form.register('name')}
+              id="nombre"
+              {...form.register('nombre')}
               className="mt-1 bg-background/70 border-border focus:border-primary"
               placeholder="Ej: Laboratorio de Computación 1"
               disabled={isEditing}
             />
-            {form.formState.errors.name && (
-              <p className="text-sm text-destructive mt-1">{form.formState.errors.name.message}</p>
+            {form.formState.errors.nombre && (
+              <p className="text-sm text-destructive mt-1">{form.formState.errors.nombre.message}</p>
             )}
-             {actionState?.errors?.name && <p className="text-sm text-destructive mt-1">{actionState.errors.name[0]}</p>}
+             {actionState?.errors?.nombre && <p className="text-sm text-destructive mt-1">{actionState.errors.nombre[0]}</p>}
           </div>
            <div>
-            <Label htmlFor="capacity" className="text-left text-foreground/80">
+            <Label htmlFor="capacidad" className="text-left text-foreground/80">
               Capacidad
             </Label>
             <Input
-              id="capacity"
+              id="capacidad"
               type="number"
-              {...form.register('capacity')}
+              {...form.register('capacidad', { valueAsNumber: true })}
               className="mt-1 bg-background/70 border-border focus:border-primary"
               placeholder="Ej: 25"
               disabled={isEditing}
             />
-            {form.formState.errors.capacity && (
-              <p className="text-sm text-destructive mt-1">{form.formState.errors.capacity.message}</p>
+            {form.formState.errors.capacidad && (
+              <p className="text-sm text-destructive mt-1">{form.formState.errors.capacidad.message}</p>
             )}
-             {actionState?.errors?.capacity && <p className="text-sm text-destructive mt-1">{actionState.errors.capacity[0]}</p>}
+             {actionState?.errors?.capacidad && <p className="text-sm text-destructive mt-1">{actionState.errors.capacidad[0]}</p>}
           </div>
           <DialogFooter>
             <DialogClose asChild>
@@ -163,4 +172,3 @@ export function RoomFormDialog({ isOpen, setIsOpen, room, onRoomSaved }: RoomFor
   );
 }
 
-    

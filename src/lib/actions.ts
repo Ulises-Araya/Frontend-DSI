@@ -449,8 +449,15 @@ export async function getManagedRooms(): Promise<Room[]> {
   }
 }
 
-export async function addManagedRoom(prevState: ActionResponse | null, formData: FormData): Promise<ActionResponse> {
-  const validatedFields = z.object({ name: z.string().min(3), capacity: z.coerce.number().min(1) }).safeParse(Object.fromEntries(formData.entries()));
+export async function addManagedRoom(prevState: ActionResponse | null, formDataOrObject: FormData | { nombre: string; capacidad: number }): Promise<ActionResponse> {
+  let dataObj: any;
+  if (formDataOrObject instanceof FormData) {
+    dataObj = Object.fromEntries(formDataOrObject.entries());
+    dataObj.capacidad = Number(dataObj.capacidad);
+  } else {
+    dataObj = formDataOrObject;
+  }
+  const validatedFields = z.object({ nombre: z.string().min(3), capacidad: z.coerce.number().min(1) }).safeParse(dataObj);
   if (!validatedFields.success) {
     return { type: 'error', message: 'Error de validación.', errors: validatedFields.error.flatten().fieldErrors };
   }
@@ -460,7 +467,7 @@ export async function addManagedRoom(prevState: ActionResponse | null, formData:
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ nombre: validatedFields.data.name, capacidad: validatedFields.data.capacity }),
+      body: JSON.stringify({ nombre: validatedFields.data.nombre, capacidad: validatedFields.data.capacidad }),
     });
     const newRoom = await response.json();
     if (!response.ok) {

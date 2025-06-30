@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -25,7 +24,7 @@ export default function AdminRoomsPage() {
     setIsLoading(true);
     try {
       const user = await getCurrentUser();
-       if (!user) {
+      if (!user) {
         router.push('/login');
         setIsLoading(false);
         return;
@@ -36,8 +35,6 @@ export default function AdminRoomsPage() {
         return;
       }
       setCurrentUser(user);
-
-      // getManagedRooms sigue usando lógica local
       const fetchedRooms = await getManagedRooms();
       setRooms(fetchedRooms);
     } catch (error) {
@@ -45,7 +42,7 @@ export default function AdminRoomsPage() {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "No se pudo cargar la información de las salas.",
+        description: `No se pudo cargar la información de las salas. ${error?.message || ''}`,
       });
       setRooms([]); 
     } finally {
@@ -58,7 +55,9 @@ export default function AdminRoomsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleRoomSaved = () => {
+  // Log para debug de creación, borrado y errores
+  const handleRoomSaved = (...args) => {
+    console.log('handleRoomSaved called', ...args);
     loadAdminData(); 
   };
 

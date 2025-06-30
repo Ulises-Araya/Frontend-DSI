@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Room } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Edit, Trash2 } from 'lucide-react';
@@ -143,4 +142,3 @@ export function RoomsList({ rooms, onRoomChange }: RoomsListProps) {
   );
 }
 
-    
